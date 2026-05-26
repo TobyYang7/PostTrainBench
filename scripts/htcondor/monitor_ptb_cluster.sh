@@ -4,10 +4,10 @@ set -uo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  bash monitor_ptb_cluster.sh <cluster_id> <result_dir> [interval_seconds]
+  bash scripts/htcondor/monitor_ptb_cluster.sh <cluster_id> <result_dir> [interval_seconds]
 
 Example:
-  bash monitor_ptb_cluster.sh 24 results/rdagent_gpt-5.5_10h_prompt1_gpu7_rdagent_htcondor/gsm8k_Qwen_Qwen3-1.7B-Base_24 30
+  bash scripts/htcondor/monitor_ptb_cluster.sh <cluster_id> <result_dir> 30
 EOF
 }
 
@@ -16,7 +16,7 @@ if [ "$#" -lt 2 ]; then
     exit 1
 fi
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONDOR_DIR="${POST_TRAIN_BENCH_PERSONAL_CONDOR_DIR:-$REPO_ROOT/.htcondor-local/condor}"
 CLUSTER_ID="$1"
 RESULT_DIR="$2"

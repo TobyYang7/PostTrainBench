@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONDOR_DIR="${POST_TRAIN_BENCH_PERSONAL_CONDOR_DIR:-$REPO_ROOT/.htcondor-local/condor}"
 
 usage() {
     cat <<'EOF'
 Usage:
-  bash check_htcondor_jobs.sh [cluster_id]
-  bash check_htcondor_jobs.sh --status
-  bash check_htcondor_jobs.sh --history [cluster_id]
-  bash check_htcondor_jobs.sh --all [cluster_id]
-  bash check_htcondor_jobs.sh --watch [seconds] [cluster_id]
+  bash scripts/htcondor/check_htcondor_jobs.sh [cluster_id]
+  bash scripts/htcondor/check_htcondor_jobs.sh --status
+  bash scripts/htcondor/check_htcondor_jobs.sh --history [cluster_id]
+  bash scripts/htcondor/check_htcondor_jobs.sh --all [cluster_id]
+  bash scripts/htcondor/check_htcondor_jobs.sh --watch [seconds] [cluster_id]
 
 Examples:
-  bash check_htcondor_jobs.sh
-  bash check_htcondor_jobs.sh 14
-  bash check_htcondor_jobs.sh --history 14
-  bash check_htcondor_jobs.sh --all 14
-  bash check_htcondor_jobs.sh --watch 5 14
+  bash scripts/htcondor/check_htcondor_jobs.sh
+  bash scripts/htcondor/check_htcondor_jobs.sh <cluster_id>
+  bash scripts/htcondor/check_htcondor_jobs.sh --history <cluster_id>
+  bash scripts/htcondor/check_htcondor_jobs.sh --all <cluster_id>
+  bash scripts/htcondor/check_htcondor_jobs.sh --watch 5 <cluster_id>
 EOF
 }
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Personal HTCondor Control"
+  short_description: "Inspect, monitor, and cancel local HTCondor jobs"
+  default_prompt: "Use $personal-htcondor-control to inspect, monitor, cancel, or clean up Personal HTCondor jobs in this PostTrainBench repo."
