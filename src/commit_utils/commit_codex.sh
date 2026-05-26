@@ -3,6 +3,9 @@ set -euo pipefail
 
 source src/commit_utils/set_env_vars.sh
 
+POST_TRAIN_BENCH_AGENT="${POST_TRAIN_BENCH_AGENT:-codex_non_api_high}"
+POST_TRAIN_BENCH_AGENT_CONFIG="${POST_TRAIN_BENCH_AGENT_CONFIG:-gpt-5.5}"
+
 ensure_condor_submit() {
     if ! command -v condor_submit_bid >/dev/null 2>&1; then
         if command -v condor_submit >/dev/null 2>&1; then
@@ -108,13 +111,13 @@ for model in "${models[@]}"; do
 
         if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER}" = "htcondor_mpi-is" ]; then
             # Codex ChatGPT subscription run
-            submit_codex_mpi_is 100 codex_non_api_high "gpt-5.5" "$eval" "$model"
+            submit_codex_mpi_is 100 "$POST_TRAIN_BENCH_AGENT" "$POST_TRAIN_BENCH_AGENT_CONFIG" "$eval" "$model"
             sleep 10
         elif [ "${POST_TRAIN_BENCH_JOB_SCHEDULER}" = "htcondor" ]; then
-            submit_codex_htcondor codex_non_api_high "gpt-5.5" "$eval" "$model"
+            submit_codex_htcondor "$POST_TRAIN_BENCH_AGENT" "$POST_TRAIN_BENCH_AGENT_CONFIG" "$eval" "$model"
             sleep 20
         elif [ "${POST_TRAIN_BENCH_JOB_SCHEDULER}" = "local" ]; then
-            submit_codex_local codex_non_api_high "gpt-5.5" "$eval" "$model"
+            submit_codex_local "$POST_TRAIN_BENCH_AGENT" "$POST_TRAIN_BENCH_AGENT_CONFIG" "$eval" "$model"
         else
             echo ERROR: job scheduler "${POST_TRAIN_BENCH_JOB_SCHEDULER}" is not supported.
         fi

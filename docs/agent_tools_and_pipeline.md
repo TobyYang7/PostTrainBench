@@ -148,6 +148,9 @@ agents/<agent>/solve.sh
 | `opencode` | `opencode` | provider config | 写入 `opencode.json`，权限设为 allow。 |
 | `qwen3max` | `claude` | DashScope key | Claude Code 连接 Qwen Anthropic-compatible endpoint。 |
 | `glm5` | `claude` | Z.AI key | Claude Code 连接 Z.AI Anthropic-compatible endpoint。 |
+| `ml_intern` | `ml-intern` | `.env` / API key | 使用干净 upstream `huggingface/ml-intern` loop，读取 `.env` 中的 API key，并执行当前 PostTrainBench prompt。 |
+
+`ml_intern` 的接入细节见 `docs/ml_intern_agent.md`。
 
 大多数 agent 都关闭了 CLI 层面的交互确认，例如：
 

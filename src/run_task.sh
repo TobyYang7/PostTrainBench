@@ -98,6 +98,16 @@ if [ -d "src/eval/tasks/${EVALUATION_TASK}/task_context" ]; then
 fi
 cp -r "containers/other_home_data/.codex" "${JOB_DIR}/"
 
+refresh_workspace_symlink() {
+    local target="$1"
+    local workspace_link="${EVAL_DIR}/proj/workspace"
+    mkdir -p "${EVAL_DIR}/proj"
+    rm -rf "${workspace_link}"
+    ln -s "${target}" "${workspace_link}"
+}
+
+refresh_workspace_symlink "${JOB_DIR}/task"
+
 copy_host_codex_auth() {
     if { [ "${POST_TRAIN_BENCH_JOB_SCHEDULER:-}" = "local" ] || [ "${POST_TRAIN_BENCH_COPY_HOST_CODEX_AUTH:-}" = "1" ]; } && [ -f "${HOME}/.codex/auth.json" ]; then
         mkdir -p "${JOB_DIR}/.codex"
@@ -240,6 +250,14 @@ cp src/utils/system_monitor.sh "${JOB_DIR}/system_monitor.sh"
 cp src/utils/timestamp_lines.py "${JOB_DIR}/timestamp_lines.py"
 cp "agents/${AGENT}/solve.sh" "${JOB_DIR}/agent_solve.sh"
 
+if [ "$AGENT" = "ml_intern" ] && [ -d "third_party/ml-intern" ]; then
+    cp -r "third_party/ml-intern" "${JOB_DIR}/ml-intern"
+    if [ -f ".env" ]; then
+        cp ".env" "${JOB_DIR}/.env"
+        chmod 0600 "${JOB_DIR}/.env"
+    fi
+fi
+
 # Copy agent-specific auth if present (e.g. for non-API agents)
 if [ -f "agents/${AGENT}/auth.json" ]; then
     cp "agents/${AGENT}/auth.json" "${JOB_DIR}/.codex/auth.json"
@@ -309,6 +327,10 @@ solve_task() {
         --env OPENCODE_API_KEY="${OPENCODE_API_KEY}" \
         --env DASHSCOPE_API_KEY="${DASHSCOPE_API_KEY}" \
         --env ZAI_API_KEY="${ZAI_API_KEY}" \
+        --env HF_TOKEN="${HF_TOKEN:-}" \
+        --env GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+        --env ML_INTERN_MODEL="${ML_INTERN_MODEL:-}" \
+        --env ML_INTERN_MAX_ITERATIONS="${ML_INTERN_MAX_ITERATIONS:-}" \
         --env VLLM_API_KEY="inspectai" \
         --env PYTHONNOUSERSITE="1" \
         --env TMPDIR="/tmp" \
@@ -445,6 +467,7 @@ fi
 python containers/delete_hf_models.py "${JOB_DIR}/task"
 
 cp -r "${JOB_DIR}/task" "$EVAL_DIR/task"
+refresh_workspace_symlink "../task"
 
 rm -rf /tmp/posttrain_container
 
