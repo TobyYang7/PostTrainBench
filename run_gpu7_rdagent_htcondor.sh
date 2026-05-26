@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+CUDA_DEVICE_IDX=7 \
+POST_TRAIN_BENCH_AGENT=rdagent \
+POST_TRAIN_BENCH_AGENT_CONFIG=gpt-5.5 \
+POST_TRAIN_BENCH_REQUIRED_GPU_NAME=H20 \
+POST_TRAIN_BENCH_EXPERIMENT_NAME=_prompt1_gpu7_rdagent_htcondor \
+POST_TRAIN_BENCH_PROMPT=prompt1 \
+POST_TRAIN_BENCH_JUDGE_PROMPT=prompt \
+POST_TRAIN_BENCH_JUDGE_MODEL=gpt-5.5 \
+RD_AGENT_MODE=sft \
+CONDOR_GPU_REQUIREMENTS=true \
+bash scripts/submit_codex_personal_htcondor.sh

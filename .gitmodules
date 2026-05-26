@@ -1,10 +1,10 @@
 [submodule "third_party/ASI-Evolve"]
 	path = third_party/ASI-Evolve
-	url = https://github.com/GAIR-NLP/ASI-Evolve.git
+	url = https://github.com/TobyYang7/ASI-Evolve.git
 	branch = main
 [submodule "third_party/ML-Master"]
 	path = third_party/ML-Master
-	url = https://github.com/sjtu-sai-agents/ML-Master.git
+	url = https://github.com/TobyYang7/ML-Master.git
 	branch = main
 [submodule "third_party/ml-intern"]
 	path = third_party/ml-intern
@@ -12,5 +12,5 @@
 	branch = main
 [submodule "third_party/rd-agent"]
 	path = third_party/rd-agent
-	url = https://github.com/microsoft/RD-Agent.git
+	url = https://github.com/TobyYang7/RD-Agent.git
 	branch = main

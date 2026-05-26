@@ -52,6 +52,10 @@ PostTrainBench includes 7 benchmarks spanning reasoning, tool use, knowledge, ma
 ## Quick Start
 
 ```bash
+# 0. Clone with submodules
+# git clone --recurse-submodules <repo-url>
+# cd PostTrainBench
+
 # 1. Install requirements (apptainer, fuse-overlayfs)
 # Alibaba Cloud Linux / RHEL / Fedora / CentOS:
 sudo dnf install -y apptainer fuse-overlayfs
@@ -80,6 +84,44 @@ bash src/commit_utils/commit.sh
 ```
 
 Currently, we only support the HTCondor job scheduler. [Harbor](https://github.com/harbor-framework/harbor) support is planned.
+
+### Third-party agent repositories
+
+The repositories under `third_party/` are managed as Git submodules:
+
+- `third_party/ASI-Evolve`
+- `third_party/ML-Master`
+- `third_party/ml-intern`
+- `third_party/rd-agent`
+
+If you cloned the repository without `--recurse-submodules`, initialize them with:
+
+```bash
+git submodule update --init --recursive
+```
+
+When pulling new changes from the top-level repository, refresh submodules with:
+
+```bash
+git pull --recurse-submodules
+git submodule update --init --recursive
+```
+
+If you want to modify one agent locally, make the change inside the submodule, commit it there, then record the new submodule pointer in the top-level repository:
+
+```bash
+cd third_party/ASI-Evolve
+git switch -c my-change
+# edit files
+git add .
+git commit -m "Update ASI-Evolve"
+
+cd ../..
+git add third_party/ASI-Evolve
+git commit -m "Bump ASI-Evolve submodule"
+```
+
+If you maintain custom patches, push the submodule commit to a fork you control before sharing the top-level repository. A fresh clone can only resolve submodule commits that exist on a reachable remote.
 
 ### Dockerized HTCondor submit environment
 
@@ -179,6 +221,7 @@ The `solve.sh` script reads the token from the file, exports it as `CLAUDE_CODE_
 | `containers/` | Container definition, cache downloads |
 | `dev_utils/` | Development utility scripts |
 | `src/` | Main codebase |
+| `third_party/` | External agent repositories tracked as Git submodules |
 | `src/commit_utils/` | Job submission utilities (e.g., `bash src/commit_utils/commit.sh`) |
 | `src/baselines/` | Scripts to compute baseline scores |
 | `src/eval/` | Evaluation tasks |

@@ -258,6 +258,22 @@ if [ "$AGENT" = "ml_intern" ] && [ -d "third_party/ml-intern" ]; then
     fi
 fi
 
+if [ "$AGENT" = "ml_master" ] && [ -d "third_party/ML-Master" ]; then
+    cp -r "third_party/ML-Master" "${JOB_DIR}/ML-Master"
+    if [ -f ".env" ]; then
+        cp ".env" "${JOB_DIR}/.env"
+        chmod 0600 "${JOB_DIR}/.env"
+    fi
+fi
+
+if [ "$AGENT" = "rdagent" ] && [ -d "third_party/rd-agent" ]; then
+    cp -r "third_party/rd-agent" "${JOB_DIR}/rd-agent"
+    if [ -f ".env" ]; then
+        cp ".env" "${JOB_DIR}/.env"
+        chmod 0600 "${JOB_DIR}/.env"
+    fi
+fi
+
 # Copy agent-specific auth if present (e.g. for non-API agents)
 if [ -f "agents/${AGENT}/auth.json" ]; then
     cp "agents/${AGENT}/auth.json" "${JOB_DIR}/.codex/auth.json"
@@ -321,6 +337,9 @@ solve_task() {
         "${NVIDIA_SMI_BIND_ARGS[@]}" \
         --env PATH="/root/.local/bin:/home/ben/.local/bin:$PATH" \
         --env HF_HOME="${HF_HOME_NEW}" \
+        --env OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+        --env OPENAI_BASE_URL="${OPENAI_BASE_URL:-}" \
+        --env OPENAI_API_BASE="${OPENAI_API_BASE:-}" \
         --env ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
         --env CODEX_API_KEY="${CODEX_API_KEY}" \
         --env GEMINI_API_KEY="${GEMINI_API_KEY}" \
@@ -331,6 +350,25 @@ solve_task() {
         --env GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
         --env ML_INTERN_MODEL="${ML_INTERN_MODEL:-}" \
         --env ML_INTERN_MAX_ITERATIONS="${ML_INTERN_MAX_ITERATIONS:-}" \
+        --env ML_MASTER_CODE_MODEL="${ML_MASTER_CODE_MODEL:-}" \
+        --env ML_MASTER_CODE_BASE_URL="${ML_MASTER_CODE_BASE_URL:-}" \
+        --env ML_MASTER_CODE_API_KEY="${ML_MASTER_CODE_API_KEY:-}" \
+        --env ML_MASTER_FEEDBACK_MODEL="${ML_MASTER_FEEDBACK_MODEL:-}" \
+        --env ML_MASTER_FEEDBACK_BASE_URL="${ML_MASTER_FEEDBACK_BASE_URL:-}" \
+        --env ML_MASTER_FEEDBACK_API_KEY="${ML_MASTER_FEEDBACK_API_KEY:-}" \
+        --env ML_MASTER_STEPS="${ML_MASTER_STEPS:-}" \
+        --env ML_MASTER_TIME_LIMIT_SECS="${ML_MASTER_TIME_LIMIT_SECS:-}" \
+        --env ML_MASTER_EXEC_TIMEOUT_SECS="${ML_MASTER_EXEC_TIMEOUT_SECS:-}" \
+        --env ML_MASTER_PARALLEL_SEARCH_NUM="${ML_MASTER_PARALLEL_SEARCH_NUM:-}" \
+        --env ML_MASTER_CPU_NUMBER="${ML_MASTER_CPU_NUMBER:-}" \
+        --env ML_MASTER_NUM_DRAFTS="${ML_MASTER_NUM_DRAFTS:-}" \
+        --env ML_MASTER_NUM_IMPROVES="${ML_MASTER_NUM_IMPROVES:-}" \
+        --env ML_MASTER_NUM_BUGS="${ML_MASTER_NUM_BUGS:-}" \
+        --env RD_AGENT_MODE="${RD_AGENT_MODE:-}" \
+        --env RD_AGENT_TIMEOUT="${RD_AGENT_TIMEOUT:-}" \
+        --env RD_AGENT_LOOP_N="${RD_AGENT_LOOP_N:-}" \
+        --env RD_AGENT_STEP_N="${RD_AGENT_STEP_N:-}" \
+        --env RD_AGENT_EMBEDDING_MODEL="${RD_AGENT_EMBEDDING_MODEL:-}" \
         --env VLLM_API_KEY="inspectai" \
         --env PYTHONNOUSERSITE="1" \
         --env TMPDIR="/tmp" \
@@ -338,6 +376,9 @@ solve_task() {
         --env NUM_GPUS="${NUM_GPUS}" \
         --env POST_TRAIN_BENCH_REQUIRED_GPU_NAME="${POST_TRAIN_BENCH_REQUIRED_GPU_NAME:-H100}" \
         --env AGENT_CONFIG="${AGENT_CONFIG}" \
+        --env EVALUATION_TASK="${EVALUATION_TASK}" \
+        --env MODEL_TO_TRAIN="${MODEL_TO_TRAIN}" \
+        --env NUM_HOURS="${NUM_HOURS}" \
         --bind "${JOB_TMP}:/tmp" \
         --bind "${HF_MERGED}:${HF_HOME_NEW}" \
         --home "${JOB_DIR}:/home/ben" \

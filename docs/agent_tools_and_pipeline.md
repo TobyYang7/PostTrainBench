@@ -149,6 +149,8 @@ agents/<agent>/solve.sh
 | `qwen3max` | `claude` | DashScope key | Claude Code 连接 Qwen Anthropic-compatible endpoint。 |
 | `glm5` | `claude` | Z.AI key | Claude Code 连接 Z.AI Anthropic-compatible endpoint。 |
 | `ml_intern` | `ml-intern` | `.env` / API key | 使用干净 upstream `huggingface/ml-intern` loop，读取 `.env` 中的 API key，并执行当前 PostTrainBench prompt。 |
+| `rdagent` | `rdagent` | `.env` / API key | 本地化的 RD-Agent post-training wrapper，支持 `RD_AGENT_MODE=sft|rl`，默认 `sft`。 |
+| `ml_master` | `ML-Master` | `.env` / API key | 使用适配后的 upstream `sjtu-sai-agents/ML-Master` 搜索 loop，在隔离 workspace 中运行 PostTrainBench 任务，并把最佳 `final_model` 回拷到基准目录。 |
 
 `ml_intern` 的接入细节见 `docs/ml_intern_agent.md`。
 
