@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    bid="$1"
+    shift
+
+    if [[ -z "${CONDOR_SUBMIT_BID_APPEND:-}" ]]; then
+        echo "ERROR: numeric bid '$bid' was requested, but CONDOR_SUBMIT_BID_APPEND is not set." >&2
+        echo "Set CONDOR_SUBMIT_BID_APPEND to the cluster-specific condor_submit -append expression, using {bid} as the placeholder." >&2
+        exit 127
+    fi
+
+    append_expr="${CONDOR_SUBMIT_BID_APPEND//\{bid\}/$bid}"
+    exec condor_submit -append "$append_expr" "$@"
+fi
+
+exec condor_submit "$@"

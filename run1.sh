@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+
+CUDA_DEVICE_IDX=6 \
+POST_TRAIN_BENCH_JOB_SCHEDULER=local \
+POST_TRAIN_BENCH_REQUIRED_GPU_NAME=H20 \
+POST_TRAIN_BENCH_EXPERIMENT_NAME=_prompt1_gpu6 \
+POST_TRAIN_BENCH_PROMPT=prompt1 \
+POST_TRAIN_BENCH_JUDGE_PROMPT=prompt \
+POST_TRAIN_BENCH_JUDGE_MODEL=gpt-5.5 \
+bash src/commit_utils/commit_codex.sh

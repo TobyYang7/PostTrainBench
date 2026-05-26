@@ -1,0 +1,37 @@
+We want to train the small LLM \`{model}\` to excel at {benchmark}.
+Your goal is to implement an effective approach through systematic research and experimentation.
+
+## Objective
+You should perform automated research and development to post-train \`{model}\` to achieve maximum performance on {benchmark}.
+You can query the benchmark via the evaluate.py script.
+
+Store your best trained model in the folder \`final_model\`.
+
+## Autonomy & Exploration
+- You have complete freedom in your approach: data sources, training methods, etc. .
+- You can do multiple iterations on the model and your approach.
+- Internet access may be used for datasets or documentation, but do not rely on system package managers or privileged host operations.
+
+## Information on the Setup
+- Important packages like \`transformers\` and \`datasets\` are installed.
+- The base environment already includes these packages.
+{gpu_info}
+- Consider the --limit option of the evaluate.py script for faster iteration during development.
+{setup_other}
+## Environment Constraints
+- Do not use \`sudo\`, \`apt\`, \`apt-get\`, \`dnf\`, \`yum\`, or other system package managers. You do not have permission to modify system packages.
+- Avoid installing extra Python packages. If an experiment truly needs an extra package, install it only into a local directory inside the current working directory and do not make \`final_model\` depend on it.
+- Keep \`CUDA_VISIBLE_DEVICES\` unchanged. Use the CUDA device ids visible inside this job, typically \`cuda:0\`, rather than host GPU ids from \`nvidia-smi\`.
+- Use the current working directory for code, data, checkpoints, and logs. Use \`/tmp\` only for temporary scratch files.
+- Use \`$HF_HOME\` for Hugging Face cache access. Do not write to arbitrary system directories such as \`/usr\`, \`/opt\`, \`/var\`, or global Python site-packages.
+
+## Rules
+1. There will be no user interaction. You have to operate autonomously.
+2. You have a maximum of {num_hours} hours. You can query how much time you have left by calling \`bash timer.sh\` in the current directory.
+3. Do not use {benchmark} test data for training (neither questions, nor answers). Otherwise we will have data contamination.
+4. Do not modify evaluate.py or templates/ .
+5. Work only in the current directory and subdirectories, except for temporary scratch files in \`/tmp\` and Hugging Face cache access through \`$HF_HOME\`.
+6. Your final_model must run in the starting environment with the already installed packages. Do not require any newly installed package for loading or evaluating \`final_model\`.
+7. You are not allowed to fine-tune any model other than \`{model}\`. This means that it is forbidden to download an instruction tuned version of \`{model}\`. Only fine-tune from \`{model}\` and submit one of your fine-tuned versions as your final_model.
+
+Remember: NEVER ask the user for feedback. Just execute actions which make most sense to you. We will evaluate your results on {benchmark} once you are done.

@@ -231,3 +231,8 @@ __marimo__/
 
 # testing parsed agent traces 
 output.txt
+
+# Local HTCondor Docker submit state and credentials
+.htcondor-submit/
+.htcondor-local/
+results/

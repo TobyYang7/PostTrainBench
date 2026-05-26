@@ -6,9 +6,12 @@ import torch
 
 def get_gpu_processes(gpu_index):
     """Get processes running on a specific GPU using nvidia-smi."""
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    device_ids = [device.strip() for device in visible_devices.split(",") if device.strip()]
+    nvidia_smi_id = device_ids[gpu_index] if gpu_index < len(device_ids) else str(gpu_index)
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--id=" + str(gpu_index),
+            ["nvidia-smi", "--id=" + nvidia_smi_id,
              "--query-compute-apps=pid,used_memory",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, check=True
@@ -22,8 +25,9 @@ def get_gpu_processes(gpu_index):
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
-def check_h100():
+def check_cuda():
     expected_gpus = int(os.environ.get("NUM_GPUS", "1"))
+    required_gpu_name = os.environ.get("POST_TRAIN_BENCH_REQUIRED_GPU_NAME", "H100")
 
     if not torch.cuda.is_available():
         print("❌ CUDA is not available")
@@ -35,14 +39,14 @@ def check_h100():
         print(f"❌ Expected {expected_gpus} GPU(s), got {device_count}")
         return False
 
-    h100_found = False
+    required_gpu_found = False
     for i in range(device_count):
         name = torch.cuda.get_device_name(i)
         props = torch.cuda.get_device_properties(i)
         print(f"  GPU {i}: {name} ({props.total_memory / 1e9:.1f} GB)")
 
-        if "H100" in name:
-            h100_found = True
+        if required_gpu_name in name:
+            required_gpu_found = True
 
             # Check for running processes on this GPU
             processes = get_gpu_processes(i)
@@ -56,10 +60,10 @@ def check_h100():
             else:
                 print(f"  ✓ GPU {i} is idle")
 
-    if h100_found:
-        print(f"✓ H100 detected ({device_count} GPU(s))")
+    if required_gpu_found:
+        print(f"✓ {required_gpu_name} detected ({device_count} GPU(s))")
     else:
-        print("❌ No H100 found")
+        print(f"❌ No {required_gpu_name} found")
         return False
 
     # Check that writing a CUDA tensor works on each GPU
@@ -74,7 +78,7 @@ def check_h100():
     return True
 
 if __name__ == "__main__":
-    cuda_available = check_h100()
+    cuda_available = check_cuda()
     if not cuda_available:
         Path("cuda_not_available").touch()
 

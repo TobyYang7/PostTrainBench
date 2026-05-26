@@ -32,19 +32,30 @@ def main():
 
     benchmark_name = read_benchmark_name(args.benchmark_id)
 
-    base_prompt = os.environ.get('POST_TRAIN_BENCH_PROMPT', 'prompt')
+    base_prompt = os.environ.get('POST_TRAIN_BENCH_PROMPT', 'prompt1')
 
     template_path = f'src/eval/general/{base_prompt}.txt'
 
     with open(template_path, 'r') as f:
         template = f.read()
 
-    datetime = subprocess.run(['date', '-u'], capture_output=True, text=True).stdout.strip()
+    date_proc = subprocess.run(
+        ['date', '-u'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    datetime = date_proc.stdout.strip()
 
+    gpu_name = os.environ.get("POST_TRAIN_BENCH_REQUIRED_GPU_NAME", "H100")
+    assigned_devices = os.environ.get("POST_TRAIN_BENCH_ASSIGNED_CUDA_VISIBLE_DEVICES") or os.environ.get("CUDA_VISIBLE_DEVICES") or os.environ.get("CUDA_DEVICE_IDX")
     if args.num_gpus == 1:
-        gpu_info = "- The machine is equipped with an Nvidia H100 GPU."
+        gpu_info = f"- This job is assigned exactly one Nvidia {gpu_name} GPU. In Python/CUDA it is visible as `cuda:0`."
     else:
-        gpu_info = f"- The machine is equipped with {args.num_gpus} Nvidia H100 GPUs."
+        last_visible_gpu = args.num_gpus - 1
+        gpu_info = f"- This job is assigned exactly {args.num_gpus} Nvidia {gpu_name} GPUs. In Python/CUDA they are visible as `cuda:0` through `cuda:{last_visible_gpu}`."
+    if assigned_devices:
+        gpu_info += f" The host GPU id(s) are `{assigned_devices}`, but inside this job you must keep `CUDA_VISIBLE_DEVICES` unchanged and use the visible CUDA device ids, not host GPU ids discovered from `nvidia-smi`."
 
     result = template.replace('{model}', args.model_to_train)
     result = result.replace('{benchmark}', benchmark_name)

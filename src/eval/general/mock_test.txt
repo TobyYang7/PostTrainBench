@@ -1,1 +1,0 @@
-Just store \`{model}\` to final_model/ and exit.

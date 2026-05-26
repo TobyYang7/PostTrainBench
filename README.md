@@ -53,6 +53,16 @@ PostTrainBench includes 7 benchmarks spanning reasoning, tool use, knowledge, ma
 
 ```bash
 # 1. Install requirements (apptainer, fuse-overlayfs)
+# Alibaba Cloud Linux / RHEL / Fedora / CentOS:
+sudo dnf install -y apptainer fuse-overlayfs
+
+# Debian/Ubuntu:
+# sudo apt-get update
+# sudo apt-get install -y apptainer fuse-overlayfs
+
+# Verify the tools are available
+apptainer --version
+fuse-overlayfs --version
 
 # 2. Build the container
 bash containers/build_container.sh standard
@@ -70,6 +80,50 @@ bash src/commit_utils/commit.sh
 ```
 
 Currently, we only support the HTCondor job scheduler. [Harbor](https://github.com/harbor-framework/harbor) support is planned.
+
+### Dockerized HTCondor submit environment
+
+If this host does not have the HTCondor client tools installed, use the
+Dockerized submit container in `docker/htcondor-submit/`. It is based on the
+official `htcondor/submit` access-point image and submits to an existing
+HTCondor GPU pool.
+
+```bash
+mkdir -p .htcondor-submit/tokens .htcondor-submit/passwords .htcondor-submit/config
+cp docker/htcondor-submit/env.example .htcondor-submit/env
+
+# Edit .htcondor-submit/env and add CONDOR_HOST plus your site's auth settings.
+set -a
+source .htcondor-submit/env
+set +a
+
+bash scripts/submit_codex_htcondor_docker.sh
+```
+
+This only replaces the submit-side HTCondor tools. The execute nodes still need
+the shared repository path, GPU access, Apptainer, and the benchmark `.sif`
+images described above.
+
+### Single-node Personal HTCondor simulation
+
+On a GPU node where you do not need a real HTCondor pool, use the Personal
+HTCondor setup. This runs `collector`, `negotiator`, `schedd`, and `startd` as
+the current user on the same host, so submitted jobs execute on the local GPU
+node without sudo or pool tokens.
+
+```bash
+bash scripts/setup_personal_htcondor.sh
+bash scripts/start_personal_htcondor.sh
+
+# Submit the Codex run through the local HTCondor schedd/startd.
+bash scripts/submit_codex_personal_htcondor.sh
+```
+
+The local setup is stored under `.htcondor-local/` and is gitignored. It uses
+HTCondor GPU discovery and one partitionable slot so `request_gpus`,
+`request_cpus`, and `request_memory` behave like a normal execute node. The
+personal submit helper relaxes the hard-coded H100 requirement and sets
+`POST_TRAIN_BENCH_REQUIRED_GPU_NAME` from the local GPU name.
 
 #### API-based agents
 

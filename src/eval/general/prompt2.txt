@@ -1,0 +1,113 @@
+We want to train the small LLM \`{model}\` to excel at {benchmark}.
+Your goal is to implement an effective approach through systematic research and experimentation.
+
+## Objective
+You should perform automated research and development to post-train \`{model}\` to achieve maximum performance on {benchmark}.
+You can query the benchmark via the evaluate.py script.
+
+Store your best trained model in the folder \`final_model\`.
+
+## Hypothesis-Driven Research Workflow
+Before implementing a training method, first propose concrete hypotheses about what may improve performance on {benchmark}. Then verify or falsify those hypotheses with targeted experiments.
+
+For each major iteration:
+1. State the hypothesis.
+2. Explain why the hypothesis is plausible for {benchmark}.
+3. Define a small verification experiment, preferably using \`evaluate.py --limit\` for fast feedback.
+4. Run the experiment or inspect the relevant evidence.
+5. Record whether the result supports or rejects the hypothesis.
+6. Decide the next method based on the evidence.
+
+Do not make large, expensive changes without first formulating a hypothesis and a verification plan. Keep a concise experiment log in the current directory so that your reasoning, data choices, training commands, and model selection are auditable.
+
+## Optional Codex Skill Workflow
+You may use the following two Codex skill guides as local operating patterns when they help your research workflow. These are not a reason to delay training, and they do not override the benchmark rules below.
+
+### skill-creator
+Use this when creating a reusable local workflow, checklist, script bundle, or domain-specific guide would make your experiments more reliable.
+
+A local skill is a folder with a required `SKILL.md` file and optional bundled resources:
+
+```text
+skills/<skill-name>/
+|-- SKILL.md
+|-- scripts/
+|-- references/
+`-- assets/
+```
+
+`SKILL.md` must start with YAML frontmatter:
+
+```markdown
+---
+name: <skill-name>
+description: <clear trigger condition for when to use this skill>
+---
+```
+
+Guidelines:
+- Keep the skill concise. Include only task-specific knowledge, workflows, or commands that you will actually reuse.
+- Put deterministic or repeatedly used code in `scripts/`.
+- Put longer benchmark notes, schemas, or examples in `references/` and read them only when needed.
+- Do not create extra docs like README, installation guides, or changelogs unless they directly help the current job.
+- Prefer local, auditable scripts over fragile one-off shell commands when the same experiment will be repeated.
+
+### skill-installer
+Use this only if an existing Codex skill would materially speed up the job. Installed skills must be local to this run and must not require privileged operations.
+
+Based on your prior experience, you may proactively identify and install relevant skills that are likely to improve the research, training, evaluation, or debugging workflow for this benchmark.
+
+If you install skills, install them under the current working directory:
+
+```bash
+mkdir -p "$PWD/.codex/skills"
+export CODEX_HOME="$PWD/.codex"
+```
+
+Curated public skills normally come from:
+
+```text
+https://github.com/openai/skills/tree/main/skills/.curated
+```
+
+Experimental skills normally come from:
+
+```text
+https://github.com/openai/skills/tree/main/skills/.experimental
+```
+
+You may use `git`, `curl`, or `wget` to fetch a public skill into `$CODEX_HOME/skills/<skill-name>` if network access works. If network access fails or installation takes too long, skip it and continue with the training pipeline. Do not install into global system directories, do not use `sudo`, and do not make `final_model` depend on any installed skill.
+
+Important limitations:
+- The currently running agent process may not hot-load newly installed skills. Treat installed or created skills as local reusable instructions and scripts unless you explicitly launch a new Codex process with `CODEX_HOME="$PWD/.codex"`.
+- Creating or installing skills is optional. The priority is still to improve and submit `final_model`.
+- Keep a short note in your experiment log when you create or install a skill, including why it helped and where it is stored.
+
+## Autonomy & Exploration
+- You have complete freedom in your approach: data sources, training methods, etc. .
+- You can do multiple iterations on the model and your approach.
+- Internet access may be used for datasets or documentation, but do not rely on system package managers or privileged host operations.
+
+## Information on the Setup
+- Important packages like \`transformers\` and \`datasets\` are installed.
+- The base environment already includes these packages.
+{gpu_info}
+- Consider the --limit option of the evaluate.py script for faster iteration during development.
+{setup_other}
+## Environment Constraints
+- Do not use \`sudo\`, \`apt\`, \`apt-get\`, \`dnf\`, \`yum\`, or other system package managers. You do not have permission to modify system packages.
+- Avoid installing extra Python packages. If an experiment truly needs an extra package, install it only into a local directory inside the current working directory and do not make \`final_model\` depend on it.
+- Keep \`CUDA_VISIBLE_DEVICES\` unchanged. Use the CUDA device ids visible inside this job, typically \`cuda:0\`, rather than host GPU ids from \`nvidia-smi\`.
+- Use the current working directory for code, data, checkpoints, and logs. Use \`/tmp\` only for temporary scratch files.
+- Use \`$HF_HOME\` for Hugging Face cache access. Do not write to arbitrary system directories such as \`/usr\`, \`/opt\`, \`/var\`, or global Python site-packages.
+
+## Rules
+1. There will be no user interaction. You have to operate autonomously.
+2. You have a maximum of {num_hours} hours. You can query how much time you have left by calling \`bash timer.sh\` in the current directory.
+3. Do not use {benchmark} test data for training (neither questions, nor answers). Otherwise we will have data contamination.
+4. Do not modify evaluate.py or templates/ .
+5. Work only in the current directory and subdirectories, except for temporary scratch files in \`/tmp\` and Hugging Face cache access through \`$HF_HOME\`.
+6. Your final_model must run in the starting environment with the already installed packages. Do not require any newly installed package for loading or evaluating \`final_model\`.
+7. You are not allowed to fine-tune any model other than \`{model}\`. This means that it is forbidden to download an instruction tuned version of \`{model}\`. Only fine-tune from \`{model}\` and submit one of your fine-tuned versions as your final_model.
+
+Remember: NEVER ask the user for feedback. Just execute actions which make most sense to you. We will evaluate your results on {benchmark} once you are done.

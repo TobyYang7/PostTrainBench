@@ -1,4 +1,4 @@
-if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER}" = "htcondor_mpi-is" ]; then
+if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER:-}" = "htcondor_mpi-is" ]; then
     source /etc/profile.d/modules.sh
 fi
 
@@ -20,13 +20,13 @@ set_default HF_HOME "$HOME/.cache/huggingface"
 set_default POST_TRAIN_BENCH_RESULTS_DIR "results"
 set_default POST_TRAIN_BENCH_CONTAINERS_DIR "containers"
 set_default POST_TRAIN_BENCH_CONTAINER_NAME "standard"
-set_default POST_TRAIN_BENCH_PROMPT "prompt"
+set_default POST_TRAIN_BENCH_PROMPT "prompt1"
 set_default POST_TRAIN_BENCH_JOB_SCHEDULER "htcondor"
 set_default POST_TRAIN_BENCH_EXPERIMENT_NAME ""
 
 export PYTHONNOUSERSITE=1
 
-if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER}" = "htcondor_mpi-is" ]; then
+if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER:-}" = "htcondor_mpi-is" ]; then
     SAVE_PATH="$PATH"
     module load cuda/12.1
     export PATH="$PATH:$SAVE_PATH"
