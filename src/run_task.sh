@@ -115,6 +115,15 @@ copy_host_codex_auth() {
     fi
 }
 
+copy_host_claude_oauth() {
+    if { [ "${POST_TRAIN_BENCH_JOB_SCHEDULER:-}" = "local" ] || [ "${POST_TRAIN_BENCH_COPY_HOST_CLAUDE_OAUTH:-}" = "1" ]; } \
+        && [ -f "${HOME}/.claude/oauth_token" ] \
+        && [ ! -f "${JOB_DIR}/oauth_token" ]; then
+        cp "${HOME}/.claude/oauth_token" "${JOB_DIR}/oauth_token"
+        chmod 0600 "${JOB_DIR}/oauth_token"
+    fi
+}
+
 force_codex_chatgpt_auth() {
     mkdir -p "${JOB_DIR}/.codex"
     if ! grep -q "forced_login_method" "${JOB_DIR}/.codex/config.toml" 2>/dev/null; then
@@ -136,6 +145,23 @@ install_host_codex_binary() {
         mkdir -p "${JOB_DIR}/.local/bin"
         cp "$host_codex_bin" "${JOB_DIR}/.local/bin/codex"
         chmod 0755 "${JOB_DIR}/.local/bin/codex"
+    fi
+}
+
+install_host_claude_binary() {
+    if [ "${POST_TRAIN_BENCH_JOB_SCHEDULER:-}" != "local" ] && [ "${POST_TRAIN_BENCH_INSTALL_HOST_CLAUDE_BINARY:-}" != "1" ]; then
+        return 0
+    fi
+
+    local host_claude_bin="${POST_TRAIN_BENCH_CLAUDE_BIN:-}"
+    if [ -z "$host_claude_bin" ] && command -v claude >/dev/null 2>&1; then
+        host_claude_bin="$(readlink -f "$(command -v claude)")"
+    fi
+
+    if [ -n "$host_claude_bin" ] && [ -x "$host_claude_bin" ]; then
+        mkdir -p "${JOB_DIR}/.local/bin"
+        cp "$host_claude_bin" "${JOB_DIR}/.local/bin/claude"
+        chmod 0755 "${JOB_DIR}/.local/bin/claude"
     fi
 }
 
@@ -227,6 +253,7 @@ SH
 
 copy_host_codex_auth
 install_host_codex_binary
+install_host_claude_binary
 install_nvidia_smi_wrapper
 
 BENCHMARK=$(cat src/eval/tasks/${EVALUATION_TASK}/benchmark.txt)
@@ -281,6 +308,7 @@ fi
 if [ -f "agents/${AGENT}/oauth_token" ]; then
     cp "agents/${AGENT}/oauth_token" "${JOB_DIR}/oauth_token"
 fi
+copy_host_claude_oauth
 
 # Utils
 with_huggingface_overlay() {

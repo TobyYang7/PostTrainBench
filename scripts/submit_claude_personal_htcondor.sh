@@ -13,18 +13,19 @@ export POST_TRAIN_BENCH_JOB_SCHEDULER=htcondor
 export POST_TRAIN_BENCH_RESULTS_DIR="${POST_TRAIN_BENCH_RESULTS_DIR:-$REPO_ROOT/results}"
 export CONDOR_LOG_DIR="${CONDOR_LOG_DIR:-$REPO_ROOT/.htcondor-local/logs}"
 export CONDOR_GPU_REQUIREMENTS="${CONDOR_GPU_REQUIREMENTS:-true}"
-export POST_TRAIN_BENCH_COPY_HOST_CODEX_AUTH="${POST_TRAIN_BENCH_COPY_HOST_CODEX_AUTH:-1}"
-export POST_TRAIN_BENCH_INSTALL_HOST_CODEX_BINARY="${POST_TRAIN_BENCH_INSTALL_HOST_CODEX_BINARY:-1}"
-export POST_TRAIN_BENCH_COPY_HOST_CLAUDE_OAUTH="${POST_TRAIN_BENCH_COPY_HOST_CLAUDE_OAUTH:-0}"
-export POST_TRAIN_BENCH_INSTALL_HOST_CLAUDE_BINARY="${POST_TRAIN_BENCH_INSTALL_HOST_CLAUDE_BINARY:-0}"
+
+# Codex auto-plumbing defaults off in the claude path; flip on per-run if you need both.
+export POST_TRAIN_BENCH_COPY_HOST_CODEX_AUTH="${POST_TRAIN_BENCH_COPY_HOST_CODEX_AUTH:-0}"
+export POST_TRAIN_BENCH_INSTALL_HOST_CODEX_BINARY="${POST_TRAIN_BENCH_INSTALL_HOST_CODEX_BINARY:-0}"
+export POST_TRAIN_BENCH_CODEX_BIN="${POST_TRAIN_BENCH_CODEX_BIN:-}"
+
+# Claude auto-plumbing defaults on; host token + binary get copied into the job.
+export POST_TRAIN_BENCH_COPY_HOST_CLAUDE_OAUTH="${POST_TRAIN_BENCH_COPY_HOST_CLAUDE_OAUTH:-1}"
+export POST_TRAIN_BENCH_INSTALL_HOST_CLAUDE_BINARY="${POST_TRAIN_BENCH_INSTALL_HOST_CLAUDE_BINARY:-1}"
 if [ -z "${POST_TRAIN_BENCH_CLAUDE_BIN:-}" ] && command -v claude >/dev/null 2>&1; then
     POST_TRAIN_BENCH_CLAUDE_BIN="$(readlink -f "$(command -v claude)")"
 fi
 export POST_TRAIN_BENCH_CLAUDE_BIN="${POST_TRAIN_BENCH_CLAUDE_BIN:-}"
-if [ -z "${POST_TRAIN_BENCH_CODEX_BIN:-}" ] && command -v codex >/dev/null 2>&1; then
-    POST_TRAIN_BENCH_CODEX_BIN="$(readlink -f "$(command -v codex)")"
-fi
-export POST_TRAIN_BENCH_CODEX_BIN="${POST_TRAIN_BENCH_CODEX_BIN:-}"
 
 if [ -z "${POST_TRAIN_BENCH_REQUIRED_GPU_NAME:-}" ] && command -v nvidia-smi >/dev/null 2>&1; then
     POST_TRAIN_BENCH_REQUIRED_GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1 || true)"
@@ -36,5 +37,5 @@ chmod 1777 "$POST_TRAIN_BENCH_RESULTS_DIR" "$CONDOR_LOG_DIR"
 
 (
     cd "$REPO_ROOT"
-    bash src/commit_utils/commit_codex.sh
+    bash src/commit_utils/commit_claude.sh
 )
