@@ -14,7 +14,9 @@ RESULT_PREFIX_SAFE=$(echo "${MODEL_NAME}" | tr '/:' '_')
 RESULT_DIR="${POST_TRAIN_BENCH_RESULTS_DIR}/baseline/${EVAL_NAME}_${RESULT_PREFIX_SAFE}_${CLUSTER_ID}"
 
 RANDOM_UUID=$(uuidgen)
-TMP_SUBDIR="/tmp/posttrain_baseline_${EVAL_NAME}_${RESULT_PREFIX_SAFE}_${RANDOM_UUID}"
+WORKSPACE_ROOT="${POST_TRAIN_BENCH_WORKSPACE_ROOT:-/tmp}"
+mkdir -p "${WORKSPACE_ROOT}"
+TMP_SUBDIR="${WORKSPACE_ROOT%/}/posttrain_baseline_${EVAL_NAME}_${RESULT_PREFIX_SAFE}_${RANDOM_UUID}"
 HF_MERGED="${TMP_SUBDIR}/merged_huggingface"
 TMP_HF_CACHE="/tmp/hf_cache_baseline"
 

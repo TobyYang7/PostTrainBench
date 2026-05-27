@@ -79,17 +79,36 @@ export OPENAI_API_KEY="your-key"
 export ANTHROPIC_API_KEY="your-key"
 export GEMINI_API_KEY="your-key"
 
+# Optional: pin runtime scratch/cache paths onto shared storage
+# cat > .env.local <<'EOF'
+# POST_TRAIN_BENCH_WORKSPACE_ROOT=/mnt/cpfs-.../user/posttrainbench-runtime/workspace
+# HF_HOME=/mnt/cpfs-.../user/posttrainbench-runtime/hf_cache
+# APPTAINER_CACHEDIR=/mnt/cpfs-.../user/posttrainbench-runtime/apptainer/cache
+# APPTAINER_TMPDIR=/mnt/cpfs-.../user/posttrainbench-runtime/apptainer/tmp
+# POST_TRAIN_BENCH_CONTAINERS_DIR=/mnt/cpfs-.../user/posttrainbench-runtime/containers
+# EOF
+#
+# `src/commit_utils/set_env_vars.sh` auto-loads `.env.local` and `.env` when present.
+
 # 5. Run jobs
 bash src/commit_utils/commit.sh
 ```
 
 Currently, we only support the HTCondor job scheduler. [Harbor](https://github.com/harbor-framework/harbor) support is planned.
 
+### HTCondor setup
+
+PostTrainBench supports two HTCondor setups:
+
+1. Connect to an existing HTCondor GPU pool from a submit host.
+2. Run a single-node Personal HTCondor instance on one GPU machine.
+
+In both modes, the actual benchmark job still runs through `src/run_task.sh` inside the benchmark container. HTCondor is only responsible for scheduling and launching that job.
+
 ### Third-party agent repositories
 
 The repositories under `third_party/` are managed as Git submodules:
 
-- `third_party/ASI-Evolve`
 - `third_party/ML-Master`
 - `third_party/ml-intern`
 - `third_party/rd-agent`
@@ -110,15 +129,15 @@ git submodule update --init --recursive
 If you want to modify one agent locally, make the change inside the submodule, commit it there, then record the new submodule pointer in the top-level repository:
 
 ```bash
-cd third_party/ASI-Evolve
+cd third_party/ML-Master
 git switch -c my-change
 # edit files
 git add .
-git commit -m "Update ASI-Evolve"
+git commit -m "Update ML-Master"
 
 cd ../..
-git add third_party/ASI-Evolve
-git commit -m "Bump ASI-Evolve submodule"
+git add third_party/ML-Master
+git commit -m "Bump ML-Master submodule"
 ```
 
 If you maintain custom patches, push the submodule commit to a fork you control before sharing the top-level repository. A fresh clone can only resolve submodule commits that exist on a reachable remote.
@@ -130,14 +149,24 @@ Dockerized submit container in `docker/htcondor-submit/`. It is based on the
 official `htcondor/submit` access-point image and submits to an existing
 HTCondor GPU pool.
 
+Use this mode when you already have access to a shared HTCondor cluster and only need a submit-side environment.
+
 ```bash
 mkdir -p .htcondor-submit/tokens .htcondor-submit/passwords .htcondor-submit/config
 cp docker/htcondor-submit/env.example .htcondor-submit/env
 
-# Edit .htcondor-submit/env and add CONDOR_HOST plus your site's auth settings.
+# Edit .htcondor-submit/env and add:
+# - CONDOR_HOST=<central-manager-host>
+# - token auth files under .htcondor-submit/tokens/ (preferred), or
+# - USE_POOL_PASSWORD=yes plus password files under .htcondor-submit/passwords/
 set -a
 source .htcondor-submit/env
 set +a
+
+# Optional: choose the agent and model before submit
+export POST_TRAIN_BENCH_AGENT=rdagent
+export POST_TRAIN_BENCH_AGENT_CONFIG=gpt-5.5
+export RD_AGENT_MODE=rl
 
 bash scripts/submit_codex_htcondor_docker.sh
 ```
@@ -146,6 +175,12 @@ This only replaces the submit-side HTCondor tools. The execute nodes still need
 the shared repository path, GPU access, Apptainer, and the benchmark `.sif`
 images described above.
 
+The Docker submit wrapper forwards the benchmark API keys and agent-specific settings into the submit environment, including:
+
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`
+- `ML_MASTER_*`
+- `RD_AGENT_MODE`, `RD_AGENT_TIMEOUT`, `RD_AGENT_LOOP_N`, `RD_AGENT_STEP_N`, `RD_AGENT_EMBEDDING_MODEL`
+
 ### Single-node Personal HTCondor simulation
 
 On a GPU node where you do not need a real HTCondor pool, use the Personal
@@ -153,11 +188,20 @@ HTCondor setup. This runs `collector`, `negotiator`, `schedd`, and `startd` as
 the current user on the same host, so submitted jobs execute on the local GPU
 node without sudo or pool tokens.
 
+Use this mode when you want HTCondor-style execution on one machine without access to a site-wide pool.
+
 ```bash
+# One-time local HTCondor setup
 bash scripts/setup_personal_htcondor.sh
+
+# Start the local collector/schedd/startd stack
 bash scripts/start_personal_htcondor.sh
 
-# Submit the Codex run through the local HTCondor schedd/startd.
+# Example: submit an RD-Agent run through the local schedd/startd
+export POST_TRAIN_BENCH_AGENT=rdagent
+export POST_TRAIN_BENCH_AGENT_CONFIG=gpt-5.5
+export RD_AGENT_MODE=sft
+
 bash scripts/submit_codex_personal_htcondor.sh
 ```
 
@@ -166,6 +210,33 @@ HTCondor GPU discovery and one partitionable slot so `request_gpus`,
 `request_cpus`, and `request_memory` behave like a normal execute node. The
 personal submit helper relaxes the hard-coded H100 requirement and sets
 `POST_TRAIN_BENCH_REQUIRED_GPU_NAME` from the local GPU name.
+
+#### Agent-specific HTCondor environment
+
+For `rdagent`, configure mode and loop behavior before submission, for example:
+
+```bash
+export POST_TRAIN_BENCH_AGENT=rdagent
+export POST_TRAIN_BENCH_AGENT_CONFIG=gpt-5.5
+export RD_AGENT_MODE=rl
+export RD_AGENT_LOOP_N=3
+export RD_AGENT_TIMEOUT=10h
+```
+
+These variables are propagated through HTCondor submit into the runtime container.
+
+For `gepa`, configure the inner executor model, reflection model, and evaluation budget before submission, for example:
+
+```bash
+export POST_TRAIN_BENCH_AGENT=gepa
+export POST_TRAIN_BENCH_AGENT_CONFIG=gpt-5.5
+export GEPA_EXEC_MODEL=gpt-5.5
+export GEPA_REFLECTION_MODEL=openai/gpt-5.5
+export GEPA_MAX_METRIC_CALLS=8
+export GEPA_EVAL_LIMIT=32
+```
+
+The current GEPA integration is experimental. It uses GEPA's `optimize_anything` API to evolve a strategy prompt for an inner `codex exec` worker, then reruns the best strategy to produce `./final_model`.
 
 #### API-based agents
 

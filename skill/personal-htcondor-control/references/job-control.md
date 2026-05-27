@@ -21,15 +21,40 @@ What the setup script does:
 What the start script does:
 
 - Auto-runs setup if `condor.sh` is missing.
+- Reapplies the repo's local config on every start so config fixes take effect on existing installs.
 - Sources `.htcondor-local/condor/condor.sh`.
+- Detects duplicate user-owned personal-condor masters and restarts the pool cleanly if more than one instance is alive.
 - Starts `condor_master` if the pool is not already running.
-- Waits for `condor_status -compact` to succeed.
+- Waits for both `condor_status -compact` and `condor_q -nobatch` to succeed, so the local `schedd` is ready for submissions.
 
 To stop the local pool:
 
 ```bash
 bash scripts/stop_personal_htcondor.sh
 ```
+
+The stop script is aggressive on purpose for this repo-local workflow:
+
+- it stops the current pool with `condor_off -master`
+- if stale daemons remain, it kills user-owned `condor_master`, `condor_schedd`, `condor_startd`, `condor_shared_port`, and `condor_procd`
+- it removes stale address and lock files from both `.htcondor-local/condor/local/lock` and legacy `/tmp/condor-lock-*` locations owned by the current user
+
+If submit fails with:
+
+```text
+ERROR: Failed to connect to local queue manager
+SECMAN:2011:Connection closed during command authorization.
+```
+
+that usually means the local pool was only partially up or stale personal-condor
+address files were left behind. Run:
+
+```bash
+bash scripts/stop_personal_htcondor.sh
+bash scripts/start_personal_htcondor.sh
+```
+
+and then retry the submit command.
 
 ## Inspect jobs
 
@@ -72,6 +97,20 @@ This prints:
 - `condor_q`
 - `condor_history`
 - tails of `output.log`, `error.log`, `solve_out.txt`, and `proj/workspace/system_monitor.log`
+
+To watch multiple runs at once and highlight likely bugs:
+
+```bash
+bash scripts/htcondor/monitor_ptb_runs.sh --interval 30 \
+  <cluster_id_1> <result_root_or_dir_1> \
+  <cluster_id_2> <result_root_or_dir_2>
+```
+
+This wrapper:
+
+- prints `condor_status -compact` plus per-cluster `condor_q` and `condor_history`
+- tails `output.log`, `error.log`, `solve_out.txt`, and `proj/workspace/system_monitor.log`
+- scans the last 200 lines for common failure signatures such as `Traceback`, `Exception`, `ERROR`, `Failed`, and CUDA OOM text
 
 ## Cancel a job
 

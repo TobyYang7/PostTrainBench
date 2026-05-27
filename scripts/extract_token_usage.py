@@ -17,6 +17,13 @@ def get_results_dir() -> str:
     return os.environ.get("POST_TRAIN_BENCH_RESULTS_DIR", "results")
 
 
+def resolve_trace_path(run_dir: Path) -> Path:
+    raw_trace = run_dir / "solve_raw.txt"
+    if raw_trace.exists():
+        return raw_trace
+    return run_dir / "solve_out.txt"
+
+
 def extract_tokens_from_file(solve_out_path: Path) -> int | None:
     """
     Extract token count from solve_out.txt file.
@@ -179,10 +186,10 @@ def main():
             print(f"  Filtered out {duplicates_removed} duplicate runs (keeping latest)")
 
         for run_dir in run_dirs:
-            solve_out = run_dir / "solve_out.txt"
+            solve_out = resolve_trace_path(run_dir)
 
             if not solve_out.exists():
-                raise FileNotFoundError(f"solve_out.txt not found: {solve_out}")
+                raise FileNotFoundError(f"trace file not found: {solve_out}")
 
             tokens = extract_tokens_from_file(solve_out)
 

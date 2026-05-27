@@ -416,10 +416,10 @@ bash /home/ben/system_monitor.sh &
 bash /home/ben/agent_solve.sh
 ```
 
-agent 输出会 timestamp 后写入：
+agent 原始输出会 timestamp 后写入：
 
 ```text
-$EVAL_DIR/solve_out.txt
+$EVAL_DIR/solve_raw.txt
 ```
 
 solve 阶段总超时为：
@@ -457,10 +457,17 @@ agents/<agent>/human_readable_trace.py
 pipeline 会生成：
 
 ```text
+$EVAL_DIR/solve_out.txt
 $EVAL_DIR/solve_parsed.txt
 ```
 
-如果没有 parser，则复制 raw output。
+其中：
+
+- `solve_out.txt`：解析后的 human-readable trace，默认给人直接看。
+- `solve_parsed.txt`：与 `solve_out.txt` 保持一致，保留旧文件名兼容性。
+- `solve_raw.txt`：原始 timestamped trace。
+
+如果没有 parser，则 `solve_out.txt` / `solve_parsed.txt` 回退为 raw output。
 
 ### 8. 运行 judge
 
@@ -497,6 +504,18 @@ POST_TRAIN_BENCH_JUDGE_MODEL
 
 ```text
 gpt-5.5
+```
+
+judge 现在默认通过 API key 运行 Codex CLI，而不是依赖 ChatGPT auth。运行 judge 时至少需要：
+
+```text
+OPENAI_API_KEY
+```
+
+或者在 `run_task.sh` 里已经转存好的：
+
+```text
+CODEX_API_KEY
 ```
 
 judge 在同一个 task 目录中运行，必须输出：
@@ -582,8 +601,9 @@ metrics.json
 | 文件 | 含义 |
 | --- | --- |
 | `prompt.txt` | 发给 agent 的任务 prompt |
-| `solve_out.txt` | 原始 timestamped agent 输出 |
-| `solve_parsed.txt` | 解析后的 human-readable trace |
+| `solve_raw.txt` | 原始 timestamped agent 输出 |
+| `solve_out.txt` | 解析后的 human-readable trace |
+| `solve_parsed.txt` | 与 `solve_out.txt` 相同，保留兼容性 |
 | `time_taken.txt` | solve 阶段耗时 |
 | `judge_output.json` | judge 原始 trace |
 | `judge_output.txt` | judge human-readable trace |

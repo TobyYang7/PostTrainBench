@@ -48,7 +48,9 @@ exec 2>${EVAL_DIR}/error.log
 
 echo "$@"
 
-export TMP_SUBDIR="/tmp/posttrain_container_${EVALUATION_TASK}_${RESULT_PREFIX_SAFE}_${RANDOM_UUID}"
+WORKSPACE_ROOT="${POST_TRAIN_BENCH_WORKSPACE_ROOT:-/tmp}"
+mkdir -p "${WORKSPACE_ROOT}"
+export TMP_SUBDIR="${WORKSPACE_ROOT%/}/posttrain_container_${EVALUATION_TASK}_${RESULT_PREFIX_SAFE}_${RANDOM_UUID}"
 
 JOB_DIR="${TMP_SUBDIR}/job_dir"
 JOB_TMP="${TMP_SUBDIR}/tmp"
@@ -61,6 +63,7 @@ CONTAINER_PYTHON_SHIM_DIR="/home/ben/python_shims"
 NVIDIA_SMI_WRAPPER="${JOB_DIR}/nvidia-smi"
 HOST_NVIDIA_SMI="$(command -v nvidia-smi 2>/dev/null || true)"
 NVIDIA_SMI_BIND_ARGS=()
+AGENT_EXTRA_BIND_ARGS=()
 
 echo "Preparing job directory..." 
 mkdir -p "${JOB_DIR}"
@@ -80,6 +83,8 @@ try:
         def _posttrain_getattr(self, key, _orig_getattr=_orig_getattr):
             if key == "all_special_tokens_extended":
                 return self.all_special_tokens
+            if key == "batch_encode_plus":
+                return self.__call__
             return _orig_getattr(self, key)
 
         _cls.__getattr__ = _posttrain_getattr
@@ -287,6 +292,18 @@ fi
 
 if [ "$AGENT" = "ml_master" ] && [ -d "third_party/ML-Master" ]; then
     cp -r "third_party/ML-Master" "${JOB_DIR}/ML-Master"
+    if [ -n "${POST_TRAIN_BENCH_ML_MASTER_VENDOR_DIR:-}" ]; then
+        mkdir -p "${POST_TRAIN_BENCH_ML_MASTER_VENDOR_DIR}"
+        AGENT_EXTRA_BIND_ARGS+=(
+            --bind "${POST_TRAIN_BENCH_ML_MASTER_VENDOR_DIR}:/opt/posttrain_mlmaster_vendor"
+        )
+    fi
+    if [ -n "${POST_TRAIN_BENCH_ML_MASTER_SHIM_DIR:-}" ]; then
+        mkdir -p "${POST_TRAIN_BENCH_ML_MASTER_SHIM_DIR}"
+        AGENT_EXTRA_BIND_ARGS+=(
+            --bind "${POST_TRAIN_BENCH_ML_MASTER_SHIM_DIR}:/opt/posttrain_mlmaster_shims"
+        )
+    fi
     if [ -f ".env" ]; then
         cp ".env" "${JOB_DIR}/.env"
         chmod 0600 "${JOB_DIR}/.env"
@@ -295,6 +312,35 @@ fi
 
 if [ "$AGENT" = "rdagent" ] && [ -d "third_party/rd-agent" ]; then
     cp -r "third_party/rd-agent" "${JOB_DIR}/rd-agent"
+    if [ -n "${POST_TRAIN_BENCH_RDAGENT_VENV_DIR:-}" ]; then
+        mkdir -p "${POST_TRAIN_BENCH_RDAGENT_VENV_DIR}"
+        AGENT_EXTRA_BIND_ARGS+=(
+            --bind "${POST_TRAIN_BENCH_RDAGENT_VENV_DIR}:/opt/posttrain_rdagent_venv"
+        )
+    fi
+    if [ -n "${POST_TRAIN_BENCH_RDAGENT_BENCHMARK_VENV_DIR:-}" ]; then
+        mkdir -p "${POST_TRAIN_BENCH_RDAGENT_BENCHMARK_VENV_DIR}"
+        AGENT_EXTRA_BIND_ARGS+=(
+            --bind "${POST_TRAIN_BENCH_RDAGENT_BENCHMARK_VENV_DIR}:/opt/posttrain_rdagent_benchmark_venv"
+        )
+    fi
+    if [ -f ".env" ]; then
+        cp ".env" "${JOB_DIR}/.env"
+        chmod 0600 "${JOB_DIR}/.env"
+    fi
+fi
+
+if [ "$AGENT" = "gepa" ]; then
+    cp -r "agents/gepa" "${JOB_DIR}/gepa-agent"
+    if [ -d "third_party/gepa" ]; then
+        cp -r "third_party/gepa" "${JOB_DIR}/gepa"
+    fi
+    if [ -n "${POST_TRAIN_BENCH_GEPA_VENV_DIR:-}" ]; then
+        mkdir -p "${POST_TRAIN_BENCH_GEPA_VENV_DIR}"
+        AGENT_EXTRA_BIND_ARGS+=(
+            --bind "${POST_TRAIN_BENCH_GEPA_VENV_DIR}:/opt/posttrain_gepa_venv"
+        )
+    fi
     if [ -f ".env" ]; then
         cp ".env" "${JOB_DIR}/.env"
         chmod 0600 "${JOB_DIR}/.env"
@@ -309,6 +355,7 @@ if [ -f "agents/${AGENT}/oauth_token" ]; then
     cp "agents/${AGENT}/oauth_token" "${JOB_DIR}/oauth_token"
 fi
 copy_host_claude_oauth
+force_codex_chatgpt_auth
 
 # Utils
 with_huggingface_overlay() {
@@ -354,7 +401,9 @@ with_record_the_time() {
     return $exit_code
 }
 
+SOLVE_RAW_OUT="${EVAL_DIR}/solve_raw.txt"
 SOLVE_OUT="${EVAL_DIR}/solve_out.txt"
+SOLVE_PARSED_OUT="${EVAL_DIR}/solve_parsed.txt"
 
 solve_task() {
     timeout --signal=TERM --kill-after=30s "$((NUM_HOURS * 60 + 5))m" \
@@ -363,6 +412,7 @@ solve_task() {
         -c \
         "${APPTAINER_CUDA_ENV[@]}" \
         "${NVIDIA_SMI_BIND_ARGS[@]}" \
+        "${AGENT_EXTRA_BIND_ARGS[@]}" \
         --env PATH="/root/.local/bin:/home/ben/.local/bin:$PATH" \
         --env HF_HOME="${HF_HOME_NEW}" \
         --env OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
@@ -392,11 +442,24 @@ solve_task() {
         --env ML_MASTER_NUM_DRAFTS="${ML_MASTER_NUM_DRAFTS:-}" \
         --env ML_MASTER_NUM_IMPROVES="${ML_MASTER_NUM_IMPROVES:-}" \
         --env ML_MASTER_NUM_BUGS="${ML_MASTER_NUM_BUGS:-}" \
+        --env ML_MASTER_VENDOR_DIR="/opt/posttrain_mlmaster_vendor" \
+        --env ML_MASTER_SHIM_DIR="/opt/posttrain_mlmaster_shims" \
         --env RD_AGENT_MODE="${RD_AGENT_MODE:-}" \
         --env RD_AGENT_TIMEOUT="${RD_AGENT_TIMEOUT:-}" \
         --env RD_AGENT_LOOP_N="${RD_AGENT_LOOP_N:-}" \
         --env RD_AGENT_STEP_N="${RD_AGENT_STEP_N:-}" \
         --env RD_AGENT_EMBEDDING_MODEL="${RD_AGENT_EMBEDDING_MODEL:-}" \
+        --env RD_AGENT_VENV="/opt/posttrain_rdagent_venv" \
+        --env RD_AGENT_BENCHMARK_VENV="/opt/posttrain_rdagent_benchmark_venv" \
+        --env GEPA_EXEC_MODEL="${GEPA_EXEC_MODEL:-}" \
+        --env GEPA_REFLECTION_MODEL="${GEPA_REFLECTION_MODEL:-}" \
+        --env GEPA_MAX_METRIC_CALLS="${GEPA_MAX_METRIC_CALLS:-}" \
+        --env GEPA_EVAL_LIMIT="${GEPA_EVAL_LIMIT:-}" \
+        --env GEPA_CANDIDATE_TIMEOUT_SECS="${GEPA_CANDIDATE_TIMEOUT_SECS:-}" \
+        --env GEPA_FINAL_TIMEOUT_SECS="${GEPA_FINAL_TIMEOUT_SECS:-}" \
+        --env GEPA_METRIC_KEY="${GEPA_METRIC_KEY:-}" \
+        --env GEPA_INSTALL_SOURCE="${GEPA_INSTALL_SOURCE:-}" \
+        --env GEPA_VENV_DIR="/opt/posttrain_gepa_venv" \
         --env VLLM_API_KEY="inspectai" \
         --env PYTHONNOUSERSITE="1" \
         --env TMPDIR="/tmp" \
@@ -413,14 +476,27 @@ solve_task() {
         --pwd "/home/ben/task" \
         --writable-tmpfs \
         "${POST_TRAIN_BENCH_CONTAINERS_DIR}/${POST_TRAIN_BENCH_CONTAINER_NAME}.sif" \
-        bash -c "{ export PROMPT=\"\$(cat /home/ben/prompt.txt)\"; python /home/ben/check_cuda.py && python /home/ben/check_cuda_writing.py || exit 1; bash /home/ben/system_monitor.sh & MONITOR_PID=\$!; bash /home/ben/agent_solve.sh; kill \$MONITOR_PID 2>/dev/null; } 2>&1 | python /home/ben/timestamp_lines.py" > "${SOLVE_OUT}" 2>&1
+        bash -c "set -o pipefail; { export PROMPT=\"\$(cat /home/ben/prompt.txt)\"; python /home/ben/check_cuda.py && python /home/ben/check_cuda_writing.py || exit 1; bash /home/ben/system_monitor.sh & MONITOR_PID=\$!; bash /home/ben/agent_solve.sh; kill \$MONITOR_PID 2>/dev/null; } 2>&1 | python /home/ben/timestamp_lines.py"
 }
 
 echo "================================"
 echo "========= RUNNING TASK ========="
 echo "================================"
 
-with_huggingface_overlay with_record_the_time solve_task
+run_solve_with_trace_capture() {
+    mkdir -p "$(dirname "${SOLVE_RAW_OUT}")"
+    set +e
+    with_huggingface_overlay with_record_the_time solve_task 2>&1 | tee "${SOLVE_RAW_OUT}"
+    local solve_exit="${PIPESTATUS[0]}"
+    set -e
+    if [ ! -f "${SOLVE_RAW_OUT}" ]; then
+        echo "Warning: ${SOLVE_RAW_OUT} was not created; falling back to output.log for trace parsing."
+        cp "${EVAL_DIR}/output.log" "${SOLVE_RAW_OUT}" 2>/dev/null || true
+    fi
+    return "$solve_exit"
+}
+
+run_solve_with_trace_capture
 SOLVE_EXIT=$?
 
 echo "--- SOLVE DIAGNOSTICS ---"
@@ -456,15 +532,28 @@ echo "============================================"
 echo "=== TASK COMPLETE, PARSING AGENT TRACE ==="
 echo "============================================"
 
-# Parse agent trace into human-readable format
+# Parse agent trace into human-readable format. `solve_out.txt` is the parsed
+# artifact; raw timestamped logs are preserved separately in `solve_raw.txt`.
 TRACE_PARSER="agents/${AGENT}/human_readable_trace.py"
+TRACE_INPUT="${SOLVE_RAW_OUT}"
+if [ ! -f "${TRACE_INPUT}" ]; then
+    TRACE_INPUT="${EVAL_DIR}/output.log"
+    echo "Warning: ${SOLVE_RAW_OUT} is missing, using ${TRACE_INPUT} instead"
+fi
 if [ -f "$TRACE_PARSER" ]; then
-    python "$TRACE_PARSER" "${SOLVE_OUT}" -o "${EVAL_DIR}/solve_parsed.txt"
-    cp "${EVAL_DIR}/solve_parsed.txt" "${JOB_DIR}/solve_parsed.txt"
+    if python "$TRACE_PARSER" "${TRACE_INPUT}" -o "${SOLVE_OUT}"; then
+        :
+    else
+        echo "Warning: trace parser failed at $TRACE_PARSER, falling back to raw output"
+        cp "${TRACE_INPUT}" "${SOLVE_OUT}"
+    fi
 else
     echo "Warning: No trace parser found at $TRACE_PARSER, using raw output"
-    cp "${SOLVE_OUT}" "${JOB_DIR}/solve_parsed.txt"
+    cp "${TRACE_INPUT}" "${SOLVE_OUT}"
 fi
+
+cp "${SOLVE_OUT}" "${SOLVE_PARSED_OUT}"
+cp "${SOLVE_OUT}" "${JOB_DIR}/solve_parsed.txt"
 
 echo "========================================="
 echo "=== RUNNING CONTAMINATION JUDGE ==="
@@ -475,12 +564,20 @@ echo "Judge prompt: ${JUDGE_PROMPT}"
 JUDGE_TASK=$(python src/disallowed_usage_judge/get_judge_prompt.py --benchmark "${BENCHMARK}" --model "${MODEL_TO_TRAIN}" --prompt "${JUDGE_PROMPT}")
 JUDGE_MODEL="${POST_TRAIN_BENCH_JUDGE_MODEL:-gpt-5.5}"
 echo "Judge model: ${JUDGE_MODEL}"
+JUDGE_API_KEY="${OPENAI_API_KEY:-${CODEX_API_KEY:-}}"
 
 # Reset codex config to prevent agent-specific settings (e.g. model_reasoning_effort)
-# from leaking into the judge, which uses a different model
+# from leaking into the judge, which uses a different model.
 cp -r "containers/other_home_data/.codex" "${JOB_DIR}/"
-copy_host_codex_auth
 force_codex_chatgpt_auth
+JUDGE_HAS_AUTH=0
+if [ -f "${JOB_DIR}/.codex/auth.json" ]; then
+    JUDGE_HAS_AUTH=1
+fi
+if [ -z "${JUDGE_API_KEY}" ] && [ "${JUDGE_HAS_AUTH}" -ne 1 ]; then
+    echo "ERROR: judge requires either OPENAI_API_KEY/CODEX_API_KEY or ${JOB_DIR}/.codex/auth.json."
+    exit 1
+fi
 
 with_huggingface_overlay apptainer exec \
     --nv \
@@ -489,8 +586,10 @@ with_huggingface_overlay apptainer exec \
     "${NVIDIA_SMI_BIND_ARGS[@]}" \
     --env PATH="/root/.local/bin:/home/ben/.local/bin:$PATH" \
     --env HF_HOME="${HF_HOME_NEW}" \
-    --env CODEX_API_KEY="" \
-    --env OPENAI_API_KEY="" \
+    --env CODEX_API_KEY="${JUDGE_API_KEY}" \
+    --env OPENAI_API_KEY="${JUDGE_API_KEY}" \
+    --env OPENAI_BASE_URL="${OPENAI_BASE_URL:-}" \
+    --env OPENAI_API_BASE="${OPENAI_API_BASE:-}" \
     --env VLLM_API_KEY="inspectai" \
     --env PYTHONNOUSERSITE="1" \
     --env TMPDIR="/tmp" \
@@ -538,7 +637,7 @@ python containers/delete_hf_models.py "${JOB_DIR}/task"
 cp -r "${JOB_DIR}/task" "$EVAL_DIR/task"
 refresh_workspace_symlink "../task"
 
-rm -rf /tmp/posttrain_container
+rm -rf "${TMP_SUBDIR}"
 
 echo "================================"
 echo "========= EVALUATING ==========="

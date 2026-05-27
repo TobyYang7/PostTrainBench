@@ -5,6 +5,7 @@ source src/commit_utils/set_env_vars.sh
 
 POST_TRAIN_BENCH_AGENT="${POST_TRAIN_BENCH_AGENT:-codex_non_api_high}"
 POST_TRAIN_BENCH_AGENT_CONFIG="${POST_TRAIN_BENCH_AGENT_CONFIG:-gpt-5.5}"
+auto_set_post_train_bench_experiment_name
 
 ensure_condor_submit() {
     if ! command -v condor_submit_bid >/dev/null 2>&1; then

@@ -34,9 +34,14 @@ if [ ! -f "$CONDOR_DIR/condor.sh" ]; then
 fi
 
 mkdir -p "$CONDOR_DIR/local/config.d"
+mkdir -p "$CONDOR_DIR/local/lock"
 cat > "$CONDOR_DIR/local/config.d/10-posttrainbench-local-gpu.conf" <<'EOF'
 # Local single-node PostTrainBench simulation pool.
 DAEMON_LIST = MASTER, COLLECTOR, NEGOTIATOR, SCHEDD, STARTD
+
+# Keep lock/shared-port state inside the repo-local tree so restarts do not
+# depend on stale files under /tmp from older personal-condor instances.
+LOCK = $(LOCAL_DIR)/lock
 
 # Use one partitionable slot so jobs requesting 16 CPUs, 128 GiB RAM, and GPUs
 # can match on a single large GPU node.

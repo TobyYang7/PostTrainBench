@@ -1,47 +1,43 @@
 #!/usr/bin/env python3
-"""Pretty-print Codex CLI stream JSON files.
+"""Normalize Codex CLI JSON logs into a line-oriented transcript.
 
-Auto-detects format: if one of the first 200 lines starts with
-'{"type":"thread.started"', the structured JSON parser is used;
-otherwise the file is copied verbatim.
+The output is intentionally closer to the plain-text `ml_intern` trace style:
+- wall-clock timestamps stay on every line
+- tool calls become `▸ <tool> {...}`
+- tool outputs are emitted as indented text blocks
+- free-form agent updates stay as plain text instead of large JSON blobs
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
 import shlex
 import shutil
+import re
 from pathlib import Path
 from typing import Any
 
 TIMESTAMP_PREFIX_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\] ')
-
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 DETECT_LINES = 200
-DETECT_PREFIX = '{"type":"thread.started"'
+RESET = "\033[0m"
+DIM = "\033[2m"
+TOOL = "\033[38;2;255;200;80m"
+WARN = "\033[33m"
+ERROR = "\033[31m"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Convert a Codex CLI --json output file into a human-readable text report. "
-            "Auto-detects structured JSON vs plain text."
-        )
+        description="Convert Codex CLI JSONL logs into a human-readable transcript."
     )
-    parser.add_argument(
-        "input",
-        type=Path,
-        help="Path to the input JSONL file produced by codex CLI",
-    )
+    parser.add_argument("input", type=Path, help="Path to the input file produced by Codex CLI")
     parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        help=(
-            "Destination text file. Defaults to <input>.parsed.txt in the same "
-            "directory."
-        ),
+        help="Destination text file. Defaults to <input>.parsed.txt in the same directory.",
     )
     parser.add_argument(
         "--stdout",
@@ -58,24 +54,36 @@ def default_output_path(input_path: Path) -> Path:
     return input_path.with_name(f"{input_path.name}.parsed.txt")
 
 
+def strip_ansi(text: str) -> str:
+    return ANSI_RE.sub("", text)
+
+
 def is_structured_json(input_path: Path) -> bool:
-    """Check if the file is structured Codex JSON by scanning the first DETECT_LINES lines."""
-    with input_path.open("r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i >= DETECT_LINES:
-                break
-            stripped = line.lstrip()
-            # Strip [timestamp] prefix if present
+    with input_path.open("r", encoding="utf-8", errors="replace") as stream:
+        seen = 0
+        for raw_line in stream:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
             ts_match = TIMESTAMP_PREFIX_RE.match(stripped)
             if ts_match:
                 stripped = stripped[ts_match.end():]
-            if stripped.startswith(DETECT_PREFIX):
+            try:
+                event = json.loads(stripped)
+            except json.JSONDecodeError:
+                seen += 1
+                if seen >= DETECT_LINES:
+                    break
+                continue
+            if isinstance(event, dict):
                 return True
+            seen += 1
+            if seen >= DETECT_LINES:
+                break
     return False
 
 
 def copy_file(input_path: Path, args: argparse.Namespace) -> None:
-    """Copy the input file verbatim to the output."""
     if args.stdout:
         print(input_path.read_text(encoding="utf-8"))
         return
@@ -86,364 +94,290 @@ def copy_file(input_path: Path, args: argparse.Namespace) -> None:
     print(f"Wrote copied file to {output_path}")
 
 
-def pretty_format_json(obj: Any, indent_level: int = 0) -> str:
-    """Format JSON with actual newlines preserved in strings."""
-    indent_str = "  " * indent_level
-    next_indent = "  " * (indent_level + 1)
-
-    if isinstance(obj, dict):
-        if not obj:
-            return "{}"
-        items = []
-        for key, value in obj.items():
-            formatted_value = pretty_format_json(value, indent_level + 1)
-            if (
-                "\n" in formatted_value
-                and not formatted_value.startswith("{")
-                and not formatted_value.startswith("[")
-            ):
-                first_line = formatted_value.split("\n")[0]
-                rest_lines = "\n".join(formatted_value.split("\n")[1:])
-                items.append(f'{next_indent}"{key}": {first_line}\n{rest_lines}')
-            else:
-                items.append(f'{next_indent}"{key}": {formatted_value}')
-        return "{\n" + ",\n".join(items) + "\n" + indent_str + "}"
-    elif isinstance(obj, list):
-        if not obj:
-            return "[]"
-        items = []
-        for item in obj:
-            formatted_item = pretty_format_json(item, indent_level + 1)
-            items.append(f"{next_indent}{formatted_item}")
-        return "[\n" + ",\n".join(items) + "\n" + indent_str + "]"
-    elif isinstance(obj, str):
-        if "\n" in obj:
-            return obj
-        else:
-            return json.dumps(obj, ensure_ascii=False)
-    elif isinstance(obj, bool):
-        return "true" if obj else "false"
-    elif obj is None:
-        return "null"
-    else:
-        return str(obj)
+def emit(
+    lines: list[str],
+    wall_ts: str | None,
+    text: str,
+    indent_level: int = 0,
+    strip_colors: bool = True,
+) -> None:
+    prefix = f"[{wall_ts}] " if wall_ts else ""
+    indent = "  " * indent_level
+    normalized = (strip_ansi(text) if strip_colors else text).rstrip("\n")
+    split_lines = normalized.splitlines() or [""]
+    for line in split_lines:
+        lines.append(f"{prefix}{indent}{line}".rstrip())
 
 
-def indent(text: str, level: int) -> str:
-    pad = "  " * level
-    return "\n".join(pad + line if line else pad for line in text.splitlines())
+def compact_json(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, separators=(", ", ": "))
 
 
-def format_unparsable_line(index: int, line: str, error_msg: str = "") -> str:
-    return line
-
-
-def format_command(command: list[str] | str) -> str:
-    """Format a command for display."""
+def format_command(command: list[str] | str | None) -> str:
+    if command is None:
+        return ""
     if isinstance(command, list):
         return " ".join(shlex.quote(str(token)) for token in command)
     return str(command)
 
 
-def format_event(index: int, data: dict[str, Any], wall_ts: str | None = None) -> str:
-    """Format a Codex event for display."""
-    # Codex events are wrapped: {"id": "...", "msg": {...}}
-    # The actual event type is in msg.type
-    msg = data.get("msg", data)
-    event_id = data.get("id", "")
-    event_type = msg.get("type", "unknown")
-
-    header_bits: list[str] = [f"type: {event_type}"]
-    if event_id:
-        header_bits.append(f"id: {event_id}")
-    if wall_ts:
-        header_bits.append(f"ts: {wall_ts}")
-
-    header_extra = " | ".join(header_bits)
-    lines: list[str] = [f"=== Event {index} | {header_extra} ==="]
-
-    handler = EVENT_HANDLERS.get(event_type, format_unknown_event)
-    lines.extend(handler(msg))
-
-    return "\n".join(lines)
+def format_tool_call(
+    lines: list[str],
+    wall_ts: str | None,
+    tool_name: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
+    if payload:
+        emit(
+            lines,
+            wall_ts,
+            f"{TOOL}▸ {tool_name}{RESET}  {DIM}{compact_json(payload)}{RESET}",
+            1,
+            strip_colors=False,
+        )
+    else:
+        emit(lines, wall_ts, f"{TOOL}▸ {tool_name}{RESET}", 1, strip_colors=False)
 
 
-def format_session_configured(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if session_id := msg.get("session_id"):
-        lines.append(indent(f"Session: {session_id}", 1))
-    if model := msg.get("model"):
-        lines.append(indent(f"Model: {model}", 1))
-    if provider := msg.get("model_provider_id"):
-        lines.append(indent(f"Provider: {provider}", 1))
-    if cwd := msg.get("cwd"):
-        lines.append(indent(f"Working directory: {cwd}", 1))
-    if approval := msg.get("approval_policy"):
-        lines.append(indent(f"Approval policy: {approval}", 1))
-    if sandbox := msg.get("sandbox_policy"):
-        lines.append(indent(f"Sandbox policy: {sandbox}", 1))
-    return lines
+def format_tool_output(lines: list[str], wall_ts: str | None, output: str | None) -> None:
+    if output is None:
+        return
+    cleaned = strip_ansi(output).rstrip()
+    if not cleaned:
+        return
+    emit(lines, wall_ts, cleaned, 2)
 
 
-def format_task_started(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if ctx_window := msg.get("model_context_window"):
-        lines.append(indent(f"Context window: {ctx_window}", 1))
-    if collab_mode := msg.get("collaboration_mode_kind"):
-        lines.append(indent(f"Collaboration mode: {collab_mode}", 1))
-    return lines
+def format_exit_status(
+    lines: list[str],
+    wall_ts: str | None,
+    exit_code: Any,
+    status: str | None = None,
+) -> None:
+    if exit_code not in (None, 0):
+        emit(lines, wall_ts, f"{ERROR}Exit code: {exit_code}{RESET}", 2, strip_colors=False)
+    elif status and status not in {"completed", "success"}:
+        emit(lines, wall_ts, f"{WARN}Status: {status}{RESET}", 2, strip_colors=False)
 
 
-def format_task_complete(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if last_msg := msg.get("last_agent_message"):
-        lines.append(indent("Last message:", 1))
-        lines.append(indent(last_msg.rstrip(), 2))
-    return lines
+def format_message(lines: list[str], wall_ts: str | None, text: str | None) -> None:
+    if text:
+        emit(lines, wall_ts, text.rstrip())
 
 
-def format_agent_message(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if message := msg.get("message"):
-        lines.append(indent("Message:", 1))
-        lines.append(indent(message.rstrip(), 2))
-    return lines
+def format_reasoning(lines: list[str], wall_ts: str | None, text: str | None) -> None:
+    if not text:
+        return
+    emit(lines, wall_ts, "Reasoning:", 1)
+    emit(lines, wall_ts, text.rstrip(), 2)
 
 
-def format_agent_message_delta(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if delta := msg.get("delta"):
-        lines.append(indent(f"Delta: {delta}", 1))
-    return lines
+def simplify_changes(changes: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not changes:
+        return []
+    simplified: list[dict[str, Any]] = []
+    for change in changes:
+        simplified.append(
+            {
+                k: change[k]
+                for k in ("path", "kind")
+                if k in change
+            }
+        )
+    return simplified
 
 
-def format_user_message(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if message := msg.get("message"):
-        lines.append(indent("Message:", 1))
-        lines.append(indent(message.rstrip(), 2))
-    if images := msg.get("images"):
-        lines.append(indent(f"Images: {images}", 1))
-    return lines
+def format_legacy_item_started(lines: list[str], wall_ts: str | None, item: dict[str, Any]) -> None:
+    item_type = item.get("type")
+    if item_type == "command_execution":
+        format_tool_call(lines, wall_ts, "bash", {"command": item.get("command", "")})
+    elif item_type == "file_change":
+        format_tool_call(lines, wall_ts, "edit", {"changes": simplify_changes(item.get("changes"))})
 
 
-def format_exec_command_begin(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if call_id := msg.get("call_id"):
-        lines.append(indent(f"Call ID: {call_id}", 1))
-    if command := msg.get("command"):
-        lines.append(indent(f"Command: {format_command(command)}", 1))
-    if cwd := msg.get("cwd"):
-        lines.append(indent(f"Working directory: {cwd}", 1))
-    if source := msg.get("source"):
-        lines.append(indent(f"Source: {source}", 1))
-    return lines
+def format_legacy_item_completed(lines: list[str], wall_ts: str | None, item: dict[str, Any]) -> None:
+    item_type = item.get("type")
+    if item_type == "agent_message":
+        format_message(lines, wall_ts, item.get("text"))
+        return
+    if item_type == "reasoning":
+        format_reasoning(lines, wall_ts, item.get("text"))
+        return
+    if item_type == "command_execution":
+        format_tool_output(lines, wall_ts, item.get("aggregated_output"))
+        format_exit_status(lines, wall_ts, item.get("exit_code"), item.get("status"))
+        return
+    if item_type == "file_change" and item.get("changes"):
+        emit(lines, wall_ts, f"Updated files: {compact_json(simplify_changes(item.get('changes')))}", 2)
+        return
+
+    payload = {k: v for k, v in item.items() if k != "type"}
+    if payload:
+        emit(lines, wall_ts, compact_json(payload), 1)
 
 
-def format_exec_command_output_delta(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if call_id := msg.get("call_id"):
-        lines.append(indent(f"Call ID: {call_id}", 1))
-    if chunk := msg.get("chunk"):
-        lines.append(indent("Output:", 1))
-        lines.append(indent(chunk.rstrip(), 2))
-    return lines
+def format_legacy_event(lines: list[str], wall_ts: str | None, event: dict[str, Any]) -> None:
+    event_type = event.get("type")
+    if event_type == "thread.started":
+        thread_id = event.get("thread_id")
+        if thread_id:
+            emit(lines, wall_ts, f"Session started: {thread_id}")
+        return
+    if event_type in {"turn.started", "turn.completed"}:
+        return
+    if event_type == "item.started":
+        item = event.get("item")
+        if isinstance(item, dict):
+            format_legacy_item_started(lines, wall_ts, item)
+        return
+    if event_type == "item.completed":
+        item = event.get("item")
+        if isinstance(item, dict):
+            format_legacy_item_completed(lines, wall_ts, item)
+        return
+
+    payload = {k: v for k, v in event.items() if k != "type"}
+    if payload:
+        emit(lines, wall_ts, compact_json(payload), 1)
 
 
-def format_exec_command_end(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if call_id := msg.get("call_id"):
-        lines.append(indent(f"Call ID: {call_id}", 1))
-    if command := msg.get("command"):
-        lines.append(indent(f"Command: {format_command(command)}", 1))
-    if (exit_code := msg.get("exit_code")) is not None:
-        lines.append(indent(f"Exit code: {exit_code}", 1))
-    if stdout := msg.get("stdout"):
-        lines.append(indent("Stdout:", 1))
-        lines.append(indent(stdout.rstrip(), 2))
-    if stderr := msg.get("stderr"):
-        lines.append(indent("Stderr:", 1))
-        lines.append(indent(stderr.rstrip(), 2))
-    return lines
+def format_new_event(lines: list[str], wall_ts: str | None, msg: dict[str, Any]) -> None:
+    event_type = msg.get("type")
+
+    if event_type == "session_configured":
+        details = {
+            key: msg[key]
+            for key in ("session_id", "model", "model_provider_id", "cwd", "approval_policy", "sandbox_policy")
+            if key in msg
+        }
+        if details:
+            emit(lines, wall_ts, f"Session configured: {compact_json(details)}")
+        return
+
+    if event_type in {"task_started", "turn_started", "task_complete", "turn_complete"}:
+        last_message = msg.get("last_agent_message")
+        if last_message:
+            format_message(lines, wall_ts, last_message)
+        return
+
+    if event_type == "agent_message":
+        format_message(lines, wall_ts, msg.get("message"))
+        return
+
+    if event_type in {"agent_reasoning", "agent_reasoning_raw_content"}:
+        format_reasoning(lines, wall_ts, msg.get("text"))
+        return
+
+    if event_type == "user_message":
+        format_message(lines, wall_ts, msg.get("message"))
+        return
+
+    if event_type == "exec_command_begin":
+        payload = {"command": format_command(msg.get("command"))}
+        if msg.get("cwd"):
+            payload["cwd"] = msg["cwd"]
+        format_tool_call(lines, wall_ts, "bash", payload)
+        return
+
+    if event_type == "exec_command_end":
+        format_tool_output(lines, wall_ts, msg.get("stdout"))
+        format_tool_output(lines, wall_ts, msg.get("stderr"))
+        format_exit_status(lines, wall_ts, msg.get("exit_code"))
+        return
+
+    if event_type == "mcp_tool_call_begin":
+        payload = {"tool": msg.get("tool_name")}
+        if "arguments" in msg:
+            payload["arguments"] = msg["arguments"]
+        format_tool_call(lines, wall_ts, f"mcp:{msg.get('server_name', 'server')}", payload)
+        return
+
+    if event_type == "mcp_tool_call_end":
+        result = msg.get("result")
+        if result is not None:
+            emit(lines, wall_ts, compact_json(result), 2)
+        return
+
+    if event_type == "patch_apply_begin":
+        format_tool_call(lines, wall_ts, "apply_patch")
+        patch = msg.get("patch")
+        if patch:
+            emit(lines, wall_ts, patch.rstrip(), 2)
+        return
+
+    if event_type == "patch_apply_end":
+        status_bits = {}
+        if "success" in msg:
+            status_bits["success"] = msg["success"]
+        if msg.get("error"):
+            status_bits["error"] = msg["error"]
+        if status_bits:
+            emit(lines, wall_ts, compact_json(status_bits), 2)
+        return
+
+    if event_type == "token_count":
+        session = msg.get("session")
+        turn = msg.get("turn")
+        if session:
+            emit(lines, wall_ts, f"Session tokens: {compact_json(session)}", 1)
+        if turn:
+            emit(lines, wall_ts, f"Turn tokens: {compact_json(turn)}", 1)
+        return
+
+    if event_type == "warning":
+        if msg.get("message"):
+            emit(lines, wall_ts, f"{WARN}Warning: {msg['message']}{RESET}", strip_colors=False)
+        return
+
+    if event_type == "error":
+        if msg.get("message"):
+            emit(lines, wall_ts, f"{ERROR}Error: {msg['message']}{RESET}", strip_colors=False)
+        else:
+            emit(lines, wall_ts, f"{ERROR}Error{RESET}", strip_colors=False)
+        if msg.get("code"):
+            emit(lines, wall_ts, f"{ERROR}Code: {msg['code']}{RESET}", 1, strip_colors=False)
+        return
+
+    payload = {k: v for k, v in msg.items() if k != "type"}
+    if payload:
+        emit(lines, wall_ts, compact_json(payload), 1)
 
 
-def format_agent_reasoning(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if text := msg.get("text"):
-        lines.append(indent("Reasoning:", 1))
-        lines.append(indent(text.rstrip(), 2))
-    if title := msg.get("title"):
-        lines.append(indent(f"Title: {title}", 1))
-    return lines
-
-
-def format_agent_reasoning_delta(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if delta := msg.get("delta"):
-        lines.append(indent(f"Delta: {delta}", 1))
-    return lines
-
-
-def format_token_count(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if session := msg.get("session"):
-        bits = []
-        for key in ("input_tokens", "output_tokens", "total_tokens", "reasoning_output_tokens"):
-            if key in session:
-                bits.append(f"{key}={session[key]}")
-        if bits:
-            lines.append(indent(f"Session: {', '.join(bits)}", 1))
-    if turn := msg.get("turn"):
-        bits = []
-        for key in ("input_tokens", "output_tokens", "total_tokens", "reasoning_output_tokens"):
-            if key in turn:
-                bits.append(f"{key}={turn[key]}")
-        if bits:
-            lines.append(indent(f"Turn: {', '.join(bits)}", 1))
-    return lines
-
-
-def format_error(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if message := msg.get("message"):
-        lines.append(indent(f"Error: {message}", 1))
-    if code := msg.get("code"):
-        lines.append(indent(f"Code: {code}", 1))
-    return lines
-
-
-def format_warning(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if message := msg.get("message"):
-        lines.append(indent(f"Warning: {message}", 1))
-    return lines
-
-
-def format_mcp_tool_call_begin(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if server := msg.get("server_name"):
-        lines.append(indent(f"Server: {server}", 1))
-    if tool := msg.get("tool_name"):
-        lines.append(indent(f"Tool: {tool}", 1))
-    if args := msg.get("arguments"):
-        lines.append(indent("Arguments:", 1))
-        lines.append(indent(pretty_format_json(args, 0), 2))
-    return lines
-
-
-def format_mcp_tool_call_end(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if server := msg.get("server_name"):
-        lines.append(indent(f"Server: {server}", 1))
-    if tool := msg.get("tool_name"):
-        lines.append(indent(f"Tool: {tool}", 1))
-    if result := msg.get("result"):
-        lines.append(indent("Result:", 1))
-        lines.append(indent(pretty_format_json(result, 0), 2))
-    return lines
-
-
-def format_patch_apply_begin(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if call_id := msg.get("call_id"):
-        lines.append(indent(f"Call ID: {call_id}", 1))
-    if patch := msg.get("patch"):
-        lines.append(indent("Patch:", 1))
-        lines.append(indent(patch.rstrip(), 2))
-    return lines
-
-
-def format_patch_apply_end(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if call_id := msg.get("call_id"):
-        lines.append(indent(f"Call ID: {call_id}", 1))
-    if success := msg.get("success"):
-        lines.append(indent(f"Success: {success}", 1))
-    if error := msg.get("error"):
-        lines.append(indent(f"Error: {error}", 1))
-    return lines
-
-
-def format_turn_aborted(msg: dict[str, Any]) -> list[str]:
-    lines: list[str] = []
-    if reason := msg.get("reason"):
-        lines.append(indent(f"Reason: {reason}", 1))
-    return lines
-
-
-def format_unknown_event(msg: dict[str, Any]) -> list[str]:
-    # Filter out the type field for cleaner output
-    filtered = {k: v for k, v in msg.items() if k != "type"}
-    if filtered:
-        return [indent(pretty_format_json(filtered, 0), 1)]
-    return []
-
-
-EVENT_HANDLERS: dict[str, Any] = {
-    "session_configured": format_session_configured,
-    "task_started": format_task_started,
-    "turn_started": format_task_started,
-    "task_complete": format_task_complete,
-    "turn_complete": format_task_complete,
-    "agent_message": format_agent_message,
-    "agent_message_delta": format_agent_message_delta,
-    "user_message": format_user_message,
-    "exec_command_begin": format_exec_command_begin,
-    "exec_command_output_delta": format_exec_command_output_delta,
-    "exec_command_end": format_exec_command_end,
-    "agent_reasoning": format_agent_reasoning,
-    "agent_reasoning_delta": format_agent_reasoning_delta,
-    "agent_reasoning_raw_content": format_agent_reasoning,
-    "agent_reasoning_raw_content_delta": format_agent_reasoning_delta,
-    "token_count": format_token_count,
-    "error": format_error,
-    "warning": format_warning,
-    "mcp_tool_call_begin": format_mcp_tool_call_begin,
-    "mcp_tool_call_end": format_mcp_tool_call_end,
-    "patch_apply_begin": format_patch_apply_begin,
-    "patch_apply_end": format_patch_apply_end,
-    "turn_aborted": format_turn_aborted,
-}
-
-
-def is_delta_event(event: dict[str, Any]) -> tuple[bool, str | None]:
-    """Check if this event is a streaming delta. Returns (is_delta, delta_type)."""
+def parse_delta_text(event: dict[str, Any]) -> tuple[str | None, str | None]:
     msg = event.get("msg", event)
-    event_type = msg.get("type", "")
-    if event_type in ("agent_message_delta", "agent_reasoning_delta", "agent_reasoning_raw_content_delta"):
-        return True, event_type
-    return False, None
+    event_type = msg.get("type")
+    if event_type not in {
+        "agent_message_delta",
+        "agent_reasoning_delta",
+        "agent_reasoning_raw_content_delta",
+    }:
+        return None, None
+    text = msg.get("delta") or msg.get("text")
+    if not text:
+        return None, None
+    return event_type, str(text)
 
 
-def format_consolidated_deltas(index: int, deltas: list[dict[str, Any]], delta_type: str) -> str:
-    """Format a sequence of delta events as a single consolidated event."""
-    if not deltas:
-        return ""
-
-    # Combine all delta content
-    combined_content = ""
-    for d in deltas:
-        msg = d.get("msg", d)
-        if chunk := msg.get("delta"):
-            combined_content += chunk
-        elif chunk := msg.get("text"):
-            combined_content += chunk
-
-    # Build header
-    type_label = delta_type.replace("_delta", "").replace("_", " ")
-    header = f"=== Event {index} | type: {delta_type} (consolidated from {len(deltas)} deltas) ==="
-    lines = [header]
-
-    if combined_content:
-        lines.append(indent(f"{type_label.title()}:", 1))
-        lines.append(indent(combined_content.rstrip(), 2))
-
-    return "\n".join(lines)
+def flush_delta_buffer(
+    lines: list[str],
+    wall_ts: str | None,
+    delta_type: str | None,
+    delta_parts: list[str],
+) -> None:
+    if not delta_type or not delta_parts:
+        return
+    text = "".join(delta_parts).rstrip()
+    if not text:
+        return
+    if delta_type == "agent_message_delta":
+        format_message(lines, wall_ts, text)
+    else:
+        format_reasoning(lines, wall_ts, text)
 
 
 def main() -> None:
     args = parse_args()
-    input_path: Path = args.input
+    input_path = args.input
     if not input_path.exists():
         raise SystemExit(f"Input file not found: {input_path}")
 
@@ -452,29 +386,17 @@ def main() -> None:
         return
 
     output_path = args.output or default_output_path(input_path)
+    lines: list[str] = []
+    delta_type: str | None = None
+    delta_parts: list[str] = []
+    delta_wall_ts: str | None = None
 
-    formatted_events: list[str] = []
-    pending_deltas: list[dict[str, Any]] = []
-    current_delta_type: str | None = None
-    event_counter = 0
-
-    def flush_deltas() -> None:
-        nonlocal pending_deltas, current_delta_type, event_counter
-        if pending_deltas and current_delta_type:
-            event_counter += 1
-            formatted_events.append(
-                format_consolidated_deltas(event_counter, pending_deltas, current_delta_type)
-            )
-            pending_deltas = []
-            current_delta_type = None
-
-    with input_path.open("r", encoding="utf-8") as stream:
-        for line_number, raw_line in enumerate(stream, 1):
+    with input_path.open("r", encoding="utf-8", errors="replace") as stream:
+        for raw_line in stream:
             stripped = raw_line.strip()
             if not stripped:
                 continue
 
-            # Strip [timestamp] prefix added by timestamp_lines.py
             wall_ts = None
             ts_match = TIMESTAMP_PREFIX_RE.match(stripped)
             if ts_match:
@@ -483,38 +405,48 @@ def main() -> None:
 
             try:
                 event = json.loads(stripped)
-            except json.JSONDecodeError as exc:
-                flush_deltas()
-                formatted_events.append(
-                    format_unparsable_line(0, stripped, exc.msg)
-                )
+            except json.JSONDecodeError:
+                flush_delta_buffer(lines, delta_wall_ts, delta_type, delta_parts)
+                delta_type = None
+                delta_parts = []
+                delta_wall_ts = None
+                emit(lines, wall_ts, stripped)
                 continue
 
             if not isinstance(event, dict):
-                flush_deltas()
-                formatted_events.append(
-                    format_unparsable_line(0, stripped, "Parsed JSON is not an object")
-                )
+                flush_delta_buffer(lines, delta_wall_ts, delta_type, delta_parts)
+                delta_type = None
+                delta_parts = []
+                delta_wall_ts = None
+                emit(lines, wall_ts, stripped)
                 continue
 
-            is_delta, delta_type = is_delta_event(event)
-            if is_delta:
-                # If delta type changes, flush previous deltas first
-                if current_delta_type is not None and delta_type != current_delta_type:
-                    flush_deltas()
-                pending_deltas.append(event)
-                current_delta_type = delta_type
+            maybe_delta_type, maybe_delta_text = parse_delta_text(event)
+            if maybe_delta_type and maybe_delta_text is not None:
+                if delta_type is not None and maybe_delta_type != delta_type:
+                    flush_delta_buffer(lines, delta_wall_ts, delta_type, delta_parts)
+                    delta_parts = []
+                delta_type = maybe_delta_type
+                delta_wall_ts = delta_wall_ts or wall_ts
+                delta_parts.append(maybe_delta_text)
+                continue
+
+            flush_delta_buffer(lines, delta_wall_ts, delta_type, delta_parts)
+            delta_type = None
+            delta_parts = []
+            delta_wall_ts = None
+
+            if "msg" in event and isinstance(event["msg"], dict):
+                format_new_event(lines, wall_ts, event["msg"])
             else:
-                flush_deltas()
-                event_counter += 1
-                formatted_events.append(format_event(event_counter, event, wall_ts))
+                format_legacy_event(lines, wall_ts, event)
 
-    flush_deltas()
+    flush_delta_buffer(lines, delta_wall_ts, delta_type, delta_parts)
 
-    output_text = "\n\n".join(formatted_events) + "\n"
+    output_text = "\n".join(line for line in lines if line is not None).rstrip() + "\n"
 
     if args.stdout:
-        print(output_text)
+        print(output_text, end="")
     else:
         output_path.write_text(output_text, encoding="utf-8")
         print(f"Wrote parsed report to {output_path}")

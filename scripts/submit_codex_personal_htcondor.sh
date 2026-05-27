@@ -34,6 +34,26 @@ export POST_TRAIN_BENCH_REQUIRED_GPU_NAME="${POST_TRAIN_BENCH_REQUIRED_GPU_NAME:
 mkdir -p "$POST_TRAIN_BENCH_RESULTS_DIR" "$CONDOR_LOG_DIR"
 chmod 1777 "$POST_TRAIN_BENCH_RESULTS_DIR" "$CONDOR_LOG_DIR"
 
+maybe_preinstall_agent_envs() {
+    if [ "${POST_TRAIN_BENCH_AUTO_PREINSTALL:-1}" != "1" ]; then
+        return 0
+    fi
+    if ! command -v apptainer >/dev/null 2>&1; then
+        return 0
+    fi
+    case "${POST_TRAIN_BENCH_AGENT:-}" in
+        ml_master|rdagent)
+            echo "Ensuring preinstalled agent environments are ready for ${POST_TRAIN_BENCH_AGENT}"
+            (
+                cd "$REPO_ROOT"
+                bash scripts/preinstall_posttrain_agent_envs.sh
+            )
+            ;;
+    esac
+}
+
+maybe_preinstall_agent_envs
+
 (
     cd "$REPO_ROOT"
     bash src/commit_utils/commit_codex.sh

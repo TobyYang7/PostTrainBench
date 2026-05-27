@@ -20,6 +20,13 @@ def get_results_dir() -> str:
     return os.environ.get("POST_TRAIN_BENCH_RESULTS_DIR", "results")
 
 
+def resolve_trace_path(run_dir: Path) -> Path:
+    raw_trace = run_dir / "solve_raw.txt"
+    if raw_trace.exists():
+        return raw_trace
+    return run_dir / "solve_out.txt"
+
+
 def extract_cost_from_file(solve_out_path: Path) -> Optional[float]:
     """
     Extract total_cost_usd from solve_out.txt file.
@@ -195,7 +202,7 @@ def main():
             print(f"  {method_name}: Filtered out {duplicates_removed} duplicate runs (keeping latest)")
 
         for run_dir in run_dirs:
-            solve_out = run_dir / "solve_out.txt"
+            solve_out = resolve_trace_path(run_dir)
             cost = extract_cost_from_file(solve_out)
 
             if cost is not None:

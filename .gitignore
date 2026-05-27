@@ -12,6 +12,7 @@ AGENTS.md
 CLAUDE.md
 
 logs
+.runtime/
 .vscode
 
 containers/empty_dot_git
@@ -159,6 +160,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -235,4 +237,4 @@ output.txt
 # Local HTCondor Docker submit state and credentials
 .htcondor-submit/
 .htcondor-local/
-results/
+results_*/
